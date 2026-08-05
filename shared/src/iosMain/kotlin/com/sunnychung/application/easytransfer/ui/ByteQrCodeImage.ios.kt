@@ -1,0 +1,58 @@
+package com.sunnychung.application.easytransfer.ui
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.interop.UIKitView
+import com.sunnychung.application.easytransfer.optical.OpticalErrorCorrection
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.usePinned
+import platform.CoreImage.CIFilter
+import platform.Foundation.NSData
+import platform.QuartzCore.kCAFilterNearest
+import platform.UIKit.UIImage
+import platform.UIKit.UIImageView
+import platform.UIKit.UIViewContentModeScaleAspectFit
+
+@OptIn(ExperimentalForeignApi::class)
+@Composable
+internal actual fun ByteQrCodeImage(
+    frame: ByteArray,
+    errorCorrection: OpticalErrorCorrection,
+    contentDescription: String?,
+    modifier: Modifier,
+) {
+    val image = remember(frame, errorCorrection) {
+        frame.toQrImage(errorCorrection)
+    }
+    UIKitView(
+        factory = {
+            UIImageView(image = image).apply {
+                contentMode = UIViewContentModeScaleAspectFit
+                layer.magnificationFilter = kCAFilterNearest
+                isAccessibilityElement = contentDescription != null
+                accessibilityLabel = contentDescription
+            }
+        },
+        update = { imageView -> imageView.image = image },
+        modifier = modifier,
+    )
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun ByteArray.toQrImage(errorCorrection: OpticalErrorCorrection): UIImage? {
+    val filter = CIFilter.filterWithName("CIQRCodeGenerator") ?: return null
+    filter.setDefaults()
+    filter.setValue(toNSData(), forKey = "inputMessage")
+    filter.setValue(errorCorrection.label, forKey = "inputCorrectionLevel")
+    return filter.outputImage?.let { outputImage -> UIImage.imageWithCIImage(outputImage) }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun ByteArray.toNSData(): NSData = usePinned { pinned ->
+    NSData.dataWithBytes(
+        bytes = pinned.addressOf(0),
+        length = size.toULong(),
+    )
+}

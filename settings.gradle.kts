@@ -27,10 +27,7 @@ dependencyResolutionManagement {
     }
 }
 
-plugins {
-    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
-}
-
 include(":androidApp")
+include(":decimen-optical-transfer-kmp")
 include(":desktopApp")
 include(":shared")

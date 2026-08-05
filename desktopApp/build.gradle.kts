@@ -17,11 +17,11 @@ dependencies {
 
 compose.desktop {
     application {
-        mainClass = "com.sunnychung.application.MainKt"
+        mainClass = "com.sunnychung.application.easytransfer.MainKt"
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "com.sunnychung.application"
+            packageName = "com.sunnychung.application.easytransfer"
             packageVersion = "1.0.0"
         }
     }

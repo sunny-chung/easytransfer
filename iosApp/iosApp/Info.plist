@@ -4,5 +4,7 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>EasyTransfer uses the camera to receive optical transfers from another screen.</string>
 </dict>
 </plist>

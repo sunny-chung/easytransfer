@@ -20,11 +20,11 @@ dependencies {
 }
 
 android {
-    namespace = "com.sunnychung.application"
+    namespace = "com.sunnychung.application.easytransfer"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "com.sunnychung.application"
+        applicationId = "com.sunnychung.application.easytransfer"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
