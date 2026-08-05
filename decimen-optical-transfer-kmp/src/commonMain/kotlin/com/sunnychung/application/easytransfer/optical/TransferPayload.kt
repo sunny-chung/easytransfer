@@ -6,8 +6,6 @@
  */
 package com.sunnychung.application.easytransfer.optical
 
-import kotlin.text.Charsets.UTF_8
-
 data class TransferPayload(
     val kind: TransferKind,
     val bytes: ByteArray,
@@ -103,8 +101,8 @@ internal object TransferPayloadCodec {
     ): PackedTransferPayload {
         val name = payload.officialContainerName()
         val mediaType = payload.officialContainerMediaType()
-        val nameBytes = safeFileName(name).toByteArray(UTF_8)
-        val mediaTypeBytes = mediaType.toByteArray(UTF_8)
+        val nameBytes = safeFileName(name).encodeToByteArray()
+        val mediaTypeBytes = mediaType.encodeToByteArray()
         require(nameBytes.size <= 0xFFFF)
         require(mediaTypeBytes.size <= 0xFFFF)
         val compressed = if (
