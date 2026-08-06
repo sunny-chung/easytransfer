@@ -1,6 +1,7 @@
 package com.sunnychung.application.easytransfer.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
@@ -57,19 +59,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.sunnychung.application.easytransfer.camera.OpticalCameraSettings
-import com.sunnychung.application.easytransfer.camera.OpticalCameraWidth
 import com.sunnychung.application.easytransfer.camera.OpticalCaptureFps
-import com.sunnychung.application.easytransfer.camera.OpticalDecodeWorkers
+import com.sunnychung.application.easytransfer.camera.supportedOpticalCameraWidths
+import com.sunnychung.application.easytransfer.camera.supportedOpticalDecodeWorkers
 import com.sunnychung.application.easytransfer.optical.OpticalReceiveProgress
 import com.sunnychung.application.easytransfer.optical.OpticalReceiveResult
 import com.sunnychung.application.easytransfer.optical.OpticalReceiver
+import com.sunnychung.application.easytransfer.optical.TransferKind
 import com.sunnychung.application.easytransfer.optical.TransferPayload
 import com.sunnychung.application.easytransfer.optical.TransferTextPreview
 import com.sunnychung.application.easytransfer.optical.estimateTransferProgress
 import com.sunnychung.application.easytransfer.optical.expectedFountainOverhead
 import com.sunnychung.application.easytransfer.ui.model.PreviewData
 import com.sunnychung.application.easytransfer.ui.model.ReceivedItemUi
-import com.sunnychung.application.easytransfer.optical.TransferKind
 import kotlin.math.roundToInt
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
@@ -161,6 +163,10 @@ private fun ScannerPanel(
     val receiver = remember { OpticalReceiver() }
     var progress by remember { mutableStateOf(OpticalReceiveProgress()) }
     var cameraSettings by remember { mutableStateOf(OpticalCameraSettings()) }
+    val cameraWidthOptions = remember(cameraSettings.captureFps) {
+        supportedOpticalCameraWidths(cameraSettings.captureFps)
+    }
+    val decodeWorkerOptions = remember { supportedOpticalDecodeWorkers() }
     var statusMessage by remember { mutableStateOf("Waiting for an optical transfer") }
     var rateWindowStart by remember { mutableStateOf(TimeSource.Monotonic.markNow()) }
     var framesAtRateWindowStart by remember { mutableStateOf(0) }
@@ -170,6 +176,11 @@ private fun ScannerPanel(
     var completedTotalMillis by remember { mutableStateOf<Long?>(null) }
     var completedStatsMessage by remember { mutableStateOf<String?>(null) }
     KeepScreenAwake(active = cameraEnabled)
+    LaunchedEffect(decodeWorkerOptions) {
+        if (cameraSettings.decodeWorkers !in decodeWorkerOptions) {
+            cameraSettings = cameraSettings.copy(decodeWorkers = decodeWorkerOptions.first())
+        }
+    }
     fun clearReceiverState() {
         receiver.reset()
         progress = OpticalReceiveProgress()
@@ -184,6 +195,15 @@ private fun ScannerPanel(
     }
     LaunchedEffect(resetSignal) {
         clearReceiverState()
+    }
+    LaunchedEffect(cameraWidthOptions) {
+        if (cameraSettings.width !in cameraWidthOptions) {
+            cameraSettings = cameraSettings.copy(
+                width = cameraWidthOptions.firstOrNull { it.width >= cameraSettings.width.width }
+                    ?: cameraWidthOptions.lastOrNull()
+                    ?: cameraSettings.width,
+            )
+        }
     }
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -375,11 +395,11 @@ private fun ScannerPanel(
                 )
                 TuningOptionGroup(
                     title = "Camera width",
-                    options = OpticalCameraWidth.entries.toList(),
+                    options = cameraWidthOptions,
                     selectedOption = cameraSettings.width,
                     onOptionSelected = { cameraSettings = cameraSettings.copy(width = it) },
                     optionLabel = { it.label },
-                    columns = 3,
+                    columns = 4,
                 )
                 TuningOptionGroup(
                     title = "Capture FPS",
@@ -389,14 +409,16 @@ private fun ScannerPanel(
                     optionLabel = { "${it.label} fps" },
                     columns = 2,
                 )
-                TuningOptionGroup(
-                    title = "Decode workers",
-                    options = OpticalDecodeWorkers.entries.toList(),
-                    selectedOption = cameraSettings.decodeWorkers,
-                    onOptionSelected = { cameraSettings = cameraSettings.copy(decodeWorkers = it) },
-                    optionLabel = { it.label },
-                    columns = 2,
-                )
+                if (decodeWorkerOptions.size > 1) {
+                    TuningOptionGroup(
+                        title = "Decode workers",
+                        options = decodeWorkerOptions,
+                        selectedOption = cameraSettings.decodeWorkers,
+                        onOptionSelected = { cameraSettings = cameraSettings.copy(decodeWorkers = it) },
+                        optionLabel = { it.label },
+                        columns = 2,
+                    )
+                }
             }
         }
     }
@@ -525,6 +547,7 @@ private fun ReceivedActionPrompt(
     val uriHandler = LocalUriHandler.current
     var actionMessage by remember { mutableStateOf<String?>(null) }
     var showTextPreview by remember { mutableStateOf(false) }
+    var showImagePreview by remember { mutableStateOf(false) }
     val payloadSaver = rememberPayloadSaver(
         onSaved = { actionMessage = "Saved successfully" },
         onError = { actionMessage = it },
@@ -685,6 +708,25 @@ private fun ReceivedActionPrompt(
                     Text("Preview URI", modifier = Modifier.padding(start = 8.dp))
                 }
             }
+            if (payload?.canPreviewImage() == true) {
+                OutlinedButton(
+                    onClick = { showImagePreview = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Outlined.Visibility, contentDescription = null)
+                    Text("Preview image", modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+            if (payload?.canPreviewVideo() == true) {
+                OutlinedButton(
+                    onClick = { payloadActions.open(payload) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = payloadActions.canOpen,
+                ) {
+                    Icon(Icons.Outlined.Visibility, contentDescription = null)
+                    Text("Preview video", modifier = Modifier.padding(start = 8.dp))
+                }
+            }
             OutlinedButton(
                 onClick = { payload?.let(payloadSaver::save) },
                 modifier = Modifier.fillMaxWidth(),
@@ -718,6 +760,12 @@ private fun ReceivedActionPrompt(
         TextPreviewDialog(
             preview = payload.textPreview() ?: TransferTextPreview(emptyList(), false),
             onDismiss = { showTextPreview = false },
+        )
+    }
+    if (showImagePreview && payload != null) {
+        ImagePreviewDialog(
+            payload = payload,
+            onDismiss = { showImagePreview = false },
         )
     }
 }
@@ -776,3 +824,81 @@ private fun TextPreviewDialog(
         }
     }
 }
+
+@Composable
+private fun ImagePreviewDialog(
+    payload: TransferPayload,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val imageBitmap = remember(payload.bytes) {
+        payload.bytes.decodePreviewImageBitmap()
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = modifier.fillMaxSize().padding(16.dp),
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Image preview",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    NavigationIconButton(
+                        icon = Icons.Outlined.Close,
+                        contentDescription = "Close preview",
+                        onClick = onDismiss,
+                    )
+                }
+                if (imageBitmap != null) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .background(Color.Black),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            bitmap = imageBitmap,
+                            contentDescription = payload.safeSuggestedFileName(),
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "This image could not be previewed.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.secondary,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
+                Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    Text("Close")
+                }
+            }
+        }
+    }
+}
+
+private fun TransferPayload.canPreviewImage(): Boolean =
+    kind == TransferKind.Image || actionMediaType().startsWith("image/")
+
+private fun TransferPayload.canPreviewVideo(): Boolean =
+    actionMediaType().startsWith("video/")

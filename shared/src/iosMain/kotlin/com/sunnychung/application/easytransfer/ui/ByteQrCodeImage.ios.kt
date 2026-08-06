@@ -9,11 +9,16 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import platform.CoreImage.CIFilter
+import platform.CoreImage.filterWithName
 import platform.Foundation.NSData
+import platform.Foundation.dataWithBytes
+import platform.Foundation.setValue
 import platform.QuartzCore.kCAFilterNearest
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageView
-import platform.UIKit.UIViewContentModeScaleAspectFit
+import platform.UIKit.UIViewContentMode
+import platform.UIKit.accessibilityLabel
+import platform.UIKit.isAccessibilityElement
 
 @OptIn(ExperimentalForeignApi::class)
 @Composable
@@ -29,7 +34,7 @@ internal actual fun ByteQrCodeImage(
     UIKitView(
         factory = {
             UIImageView(image = image).apply {
-                contentMode = UIViewContentModeScaleAspectFit
+                contentMode = UIViewContentMode.UIViewContentModeScaleAspectFit
                 layer.magnificationFilter = kCAFilterNearest
                 isAccessibilityElement = contentDescription != null
                 accessibilityLabel = contentDescription

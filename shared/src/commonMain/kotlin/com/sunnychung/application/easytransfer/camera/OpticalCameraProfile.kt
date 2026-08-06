@@ -5,18 +5,18 @@
  */
 package com.sunnychung.application.easytransfer.camera
 
-// Capture widths match the settings exposed by the original receiver UI.
-enum class OpticalCameraWidth(
+data class OpticalCameraWidth(
     val label: String,
     val width: Int,
+    val height: Int = width * 3 / 4,
 ) {
-    Width960(label = "960", width = 960),
-    Width1280(label = "1280", width = 1_280),
-    Width1920(label = "1920", width = 1_920),
-    ;
+    companion object {
+        val Width960 = OpticalCameraWidth(label = "960", width = 960)
+        val Width1280 = OpticalCameraWidth(label = "1280", width = 1_280)
+        val Width1920 = OpticalCameraWidth(label = "1920", width = 1_920)
 
-    val height: Int
-        get() = width * 3 / 4
+        val defaults = listOf(Width960, Width1280, Width1920)
+    }
 }
 
 enum class OpticalCaptureFps(
@@ -46,3 +46,9 @@ data class OpticalCameraSettings(
     val targetHeight: Int
         get() = width.height
 }
+
+internal expect fun supportedOpticalCameraWidths(
+    captureFps: OpticalCaptureFps,
+): List<OpticalCameraWidth>
+
+internal expect fun supportedOpticalDecodeWorkers(): List<OpticalDecodeWorkers>
