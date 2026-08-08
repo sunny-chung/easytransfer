@@ -34,6 +34,9 @@ import com.kashif.cameraK.state.CameraKStateHolder
 import com.sunnychung.application.easytransfer.camera.OpticalCameraSettings
 import com.sunnychung.application.easytransfer.camera.desktopCameraGrabber
 import java.awt.image.BufferedImage
+import java.awt.image.ConvolveOp
+import java.awt.image.Kernel
+import java.awt.image.RescaleOp
 import java.nio.charset.StandardCharsets
 import java.util.EnumMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -189,9 +192,12 @@ private class JvmByteQrDecoder {
 
     fun decode(image: BufferedImage): ByteArray? {
         val croppedImage = image.centerQrCrop()
+        val enhancedCrop = croppedImage.enhancedForQr()
         return decodeCandidate(croppedImage)
+            ?: decodeCandidate(enhancedCrop)
             ?: decodeCandidate(image)
             ?: decodeCandidate(croppedImage.horizontallyFlipped())
+            ?: decodeCandidate(enhancedCrop.horizontallyFlipped())
             ?: decodeCandidate(image.horizontallyFlipped())
     }
 
@@ -242,6 +248,27 @@ private fun BufferedImage.horizontallyFlipped(): BufferedImage {
     return flippedImage
 }
 
+private fun BufferedImage.enhancedForQr(): BufferedImage {
+    val rgbImage = toRgbImage()
+    val sharpened = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+    QR_SHARPEN_OP.filter(rgbImage, sharpened)
+    val contrasted = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+    QR_CONTRAST_OP.filter(sharpened, contrasted)
+    return contrasted
+}
+
+private fun BufferedImage.toRgbImage(): BufferedImage {
+    if (type == BufferedImage.TYPE_INT_RGB) return this
+    val rgbImage = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+    val graphics = rgbImage.createGraphics()
+    try {
+        graphics.drawImage(this, 0, 0, null)
+    } finally {
+        graphics.dispose()
+    }
+    return rgbImage
+}
+
 private fun Result.byteModePayload(): ByteArray? {
     val segments = resultMetadata?.get(ResultMetadataType.BYTE_SEGMENTS) as? Iterable<*> ?: return null
     val byteSegments = segments.filterIsInstance<ByteArray>()
@@ -258,3 +285,15 @@ private fun Result.byteModePayload(): ByteArray? {
 
 private const val CENTER_CROP_RATIO = 0.82
 private const val MINIMUM_CROP_SIZE = 360
+private val QR_SHARPEN_OP = ConvolveOp(
+    Kernel(
+        3,
+        3,
+        floatArrayOf(
+            0f, -1f, 0f,
+            -1f, 5f, -1f,
+            0f, -1f, 0f,
+        ),
+    ),
+)
+private val QR_CONTRAST_OP = RescaleOp(1.25f, -16f, null)

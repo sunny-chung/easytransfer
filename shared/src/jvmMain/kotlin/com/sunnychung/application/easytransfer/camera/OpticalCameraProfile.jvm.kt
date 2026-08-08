@@ -181,13 +181,21 @@ private class DirectShowQrFrameGrabber(
 }
 
 private fun VideoInput.configureAutofocus(deviceNumber: Int) {
-    setVideoSettingCamera(
+    val didEnableAutofocus = setVideoSettingCamera(
         deviceNumber,
         propFocus(),
         0,
         DIRECTSHOW_CONTROL_AUTO,
         false,
     )
+    if (!didEnableAutofocus) {
+        setVideoSettingCameraPct(
+            deviceNumber,
+            propFocus(),
+            DIRECTSHOW_CLOSE_FOCUS_PERCENT,
+            DIRECTSHOW_CONTROL_MANUAL,
+        )
+    }
 }
 
 private fun desktopCameraWidths(): List<OpticalCameraWidth> = when (currentDesktopOperatingSystem()) {
@@ -244,3 +252,5 @@ private enum class DesktopOperatingSystem {
 private const val DEFAULT_WINDOWS_CAMERA_WIDTH = 1_280
 private const val DEFAULT_WINDOWS_CAMERA_HEIGHT = 720
 private const val DIRECTSHOW_CONTROL_AUTO = 1
+private const val DIRECTSHOW_CONTROL_MANUAL = 2
+private const val DIRECTSHOW_CLOSE_FOCUS_PERCENT = 0.15f
