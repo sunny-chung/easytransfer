@@ -1,6 +1,7 @@
 package com.sunnychung.application.easytransfer.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,7 +27,6 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.DropdownMenu
@@ -47,31 +47,28 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.sunnychung.application.easytransfer.generated.resources.Res
+import com.sunnychung.application.easytransfer.generated.resources.app_icon
 import com.sunnychung.application.easytransfer.ui.model.HistoryItemUi
 import com.sunnychung.application.easytransfer.optical.TransferKind
 import com.sunnychung.application.easytransfer.ui.model.TransferStatus
+import org.jetbrains.compose.resources.painterResource
 
 @Composable
 internal fun BrandMark(
     modifier: Modifier = Modifier,
 ) {
-    Surface(
+    Image(
+        painter = painterResource(Res.drawable.app_icon),
+        contentDescription = null,
         modifier = modifier.size(38.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.primary,
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = Icons.Outlined.SwapHoriz,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimary,
-            )
-        }
-    }
+        contentScale = ContentScale.Fit,
+    )
 }
 
 @Composable

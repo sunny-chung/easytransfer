@@ -102,3 +102,7 @@ sqldelight {
         }
     }
 }
+
+compose.resources {
+    packageOfResClass = "com.sunnychung.application.easytransfer.generated.resources"
+}

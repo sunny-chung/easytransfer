@@ -23,6 +23,16 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "com.sunnychung.application.easytransfer"
             packageVersion = "1.0.0"
+
+            macOS {
+                iconFile.set(project.file("src/main/resources/icons/AppIcon.icns"))
+            }
+            windows {
+                iconFile.set(project.file("src/main/resources/icons/transfer-icon.ico"))
+            }
+            linux {
+                iconFile.set(project.file("src/main/resources/icons/transfer-icon.png"))
+            }
         }
     }
 }
