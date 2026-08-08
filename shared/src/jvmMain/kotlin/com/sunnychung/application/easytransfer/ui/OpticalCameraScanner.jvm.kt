@@ -1,7 +1,12 @@
 package com.sunnychung.application.easytransfer.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -18,14 +23,16 @@ import com.google.zxing.client.j2se.BufferedImageLuminanceSource
 import com.google.zxing.common.GlobalHistogramBinarizer
 import com.google.zxing.common.HybridBinarizer
 import com.kashif.cameraK.compose.CameraKScreen
-import com.kashif.cameraK.compose.rememberCameraKState
+import com.kashif.cameraK.controller.DesktopCameraControllerBuilder
 import com.kashif.cameraK.enums.AspectRatio
 import com.kashif.cameraK.enums.CameraLens
 import com.kashif.cameraK.permissions.providePermissions
 import com.kashif.cameraK.state.CameraConfiguration
 import com.kashif.cameraK.state.CameraKPlugin
+import com.kashif.cameraK.state.CameraKState
 import com.kashif.cameraK.state.CameraKStateHolder
 import com.sunnychung.application.easytransfer.camera.OpticalCameraSettings
+import com.sunnychung.application.easytransfer.camera.desktopCameraGrabber
 import java.awt.image.BufferedImage
 import java.nio.charset.StandardCharsets
 import java.util.EnumMap
@@ -77,8 +84,9 @@ internal actual fun OpticalCameraScanner(
             targetResolution = cameraSettings.targetWidth to cameraSettings.targetHeight,
         )
     }
-    val cameraState by rememberCameraKState(
+    val cameraState by rememberDesktopCameraState(
         config = cameraConfiguration,
+        cameraSettings = cameraSettings,
         setupPlugins = { stateHolder -> stateHolder.attachPlugin(opticalQrPlugin) },
     )
     CameraKScreen(
@@ -88,6 +96,46 @@ internal actual fun OpticalCameraScanner(
         errorContent = { CameraMessage(it.message ?: "Camera could not start") },
         overlay = { CameraTargetOverlay() },
     ) {}
+}
+
+@Composable
+private fun rememberDesktopCameraState(
+    config: CameraConfiguration,
+    cameraSettings: OpticalCameraSettings,
+    setupPlugins: suspend (CameraKStateHolder) -> Unit,
+): State<CameraKState> {
+    val coroutineScope = rememberCoroutineScope()
+    val stateHolder = remember(config, cameraSettings) {
+        CameraKStateHolder(
+            cameraConfiguration = config,
+            controllerFactory = {
+                DesktopCameraControllerBuilder()
+                    .apply {
+                        setImageFormat(config.imageFormat)
+                        setDirectory(config.directory)
+                        setAspectRatio(config.aspectRatio)
+                        setCameraLens(config.cameraLens)
+                        setGrabber(desktopCameraGrabber(cameraSettings))
+                        config.targetResolution?.let { (width, height) ->
+                            setResolution(width, height)
+                        }
+                    }
+                    .build()
+            },
+            coroutineScope = coroutineScope,
+        )
+    }
+
+    LaunchedEffect(stateHolder) {
+        setupPlugins(stateHolder)
+        stateHolder.initialize()
+    }
+
+    DisposableEffect(stateHolder) {
+        onDispose { stateHolder.shutdown() }
+    }
+
+    return stateHolder.cameraState.collectAsState()
 }
 
 private class JvmOpticalQrScannerPlugin(

@@ -5,6 +5,8 @@
  */
 package com.sunnychung.application.easytransfer.camera
 
+import androidx.compose.runtime.Composable
+
 data class OpticalCameraWidth(
     val label: String,
     val width: Int,
@@ -23,6 +25,7 @@ enum class OpticalCaptureFps(
     val label: String,
     val framesPerSecond: Int,
 ) {
+    Fps15(label = "15", framesPerSecond = 15),
     Fps30(label = "30", framesPerSecond = 30),
     Fps60(label = "60", framesPerSecond = 60),
 }
@@ -47,8 +50,12 @@ data class OpticalCameraSettings(
         get() = width.height
 }
 
+@Composable
 internal expect fun supportedOpticalCameraWidths(
     captureFps: OpticalCaptureFps,
 ): List<OpticalCameraWidth>
+
+@Composable
+internal expect fun supportedOpticalCaptureFps(): List<OpticalCaptureFps>
 
 internal expect fun supportedOpticalDecodeWorkers(): List<OpticalDecodeWorkers>
