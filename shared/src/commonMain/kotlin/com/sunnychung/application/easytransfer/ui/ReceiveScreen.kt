@@ -901,4 +901,4 @@ private fun TransferPayload.canPreviewImage(): Boolean =
     kind == TransferKind.Image || actionMediaType().startsWith("image/")
 
 private fun TransferPayload.canPreviewVideo(): Boolean =
-    actionMediaType().startsWith("video/")
+    false // actionMediaType().startsWith("video/")
