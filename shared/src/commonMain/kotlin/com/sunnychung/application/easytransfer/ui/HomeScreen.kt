@@ -103,7 +103,7 @@ internal fun HomeScreen(
                 }
             }
 
-            if (!wideContent) {
+            if (!wideContent && historyItems.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionHeading(
                         title = "Recent",
