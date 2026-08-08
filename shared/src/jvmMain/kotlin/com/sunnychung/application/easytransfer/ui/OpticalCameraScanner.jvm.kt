@@ -182,13 +182,17 @@ private class JvmByteQrDecoder {
         setHints(
             EnumMap<DecodeHintType, Any>(DecodeHintType::class.java).apply {
                 put(DecodeHintType.POSSIBLE_FORMATS, listOf(BarcodeFormat.QR_CODE))
+                put(DecodeHintType.TRY_HARDER, true)
             },
         )
     }
 
     fun decode(image: BufferedImage): ByteArray? {
         val croppedImage = image.centerQrCrop()
-        return decodeCandidate(croppedImage) ?: decodeCandidate(image)
+        return decodeCandidate(croppedImage)
+            ?: decodeCandidate(image)
+            ?: decodeCandidate(croppedImage.horizontallyFlipped())
+            ?: decodeCandidate(image.horizontallyFlipped())
     }
 
     private fun decodeCandidate(image: BufferedImage): ByteArray? {
@@ -213,6 +217,29 @@ private fun BufferedImage.centerQrCrop(): BufferedImage {
     val x = (width - side) / 2
     val y = (height - side) / 2
     return getSubimage(x, y, side, side)
+}
+
+private fun BufferedImage.horizontallyFlipped(): BufferedImage {
+    val targetType = if (type == BufferedImage.TYPE_CUSTOM) BufferedImage.TYPE_INT_RGB else type
+    val flippedImage = BufferedImage(width, height, targetType)
+    val graphics = flippedImage.createGraphics()
+    try {
+        graphics.drawImage(
+            this,
+            0,
+            0,
+            width,
+            height,
+            width,
+            0,
+            0,
+            height,
+            null,
+        )
+    } finally {
+        graphics.dispose()
+    }
+    return flippedImage
 }
 
 private fun Result.byteModePayload(): ByteArray? {
