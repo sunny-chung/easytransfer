@@ -1,5 +1,6 @@
 [versions]
 agp = "9.1.1"
+appdirs = "1.5.0"
 android-compileSdk = "37"
 android-minSdk = "24"
 android-targetSdk = "37"
@@ -22,6 +23,7 @@ gst1JavaCore = "1.4.0"
 sqlDelight = "2.3.2"
 
 [libraries]
+appdirs = { module = "net.harawata:appdirs", version.ref = "appdirs" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 junit = { module = "junit:junit", version.ref = "junit" }

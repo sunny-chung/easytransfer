@@ -8,10 +8,19 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.StandardCopyOption
 import java.util.Calendar
+import net.harawata.appdirs.AppDirsFactory
 
 @Composable
 internal actual fun rememberPersistentHistoryStore(): PersistentHistoryStore = remember {
-    val historyDirectory = File(System.getProperty("user.home"), ".easytransfer/history")
+    val userDataDirectory = AppDirsFactory.getInstance().getUserDataDir(
+        "EasyTransfer",
+        null,
+        "Sunny Chung",
+    )
+    val historyDirectory = File(userDataDirectory, "history")
+    check(historyDirectory.isDirectory || historyDirectory.mkdirs()) {
+        "Could not create history directory: ${historyDirectory.absolutePath}"
+    }
     val databaseFile = File(historyDirectory, "history.db")
     val driver = JdbcSqliteDriver("jdbc:sqlite:${databaseFile.absolutePath}")
     HistoryDatabase.Schema.create(driver)

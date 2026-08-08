@@ -58,6 +58,7 @@ kotlin {
             implementation(libs.zxing.cpp.android)
         }
         jvmMain.dependencies {
+            implementation(libs.appdirs)
             implementation(libs.zxing.core)
             implementation(libs.zxing.javase)
             implementation(libs.camera.core)
