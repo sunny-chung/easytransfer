@@ -58,6 +58,7 @@ kotlin {
             implementation(libs.zxing.core)
             implementation(libs.zxing.javase)
             implementation(libs.camera.core)
+            implementation(libs.gst1.java.core)
         }
         commonMain.dependencies {
             api(project(":decimen-optical-transfer-kmp"))

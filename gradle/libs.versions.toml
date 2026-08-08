@@ -18,6 +18,7 @@ material3 = "1.11.0-alpha07"
 materialIcons = "1.7.3"
 cameraK = "1.1"
 fileKit = "0.14.2"
+gst1JavaCore = "1.4.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -48,6 +49,7 @@ fileKit-dialogsCompose = { module = "io.github.vinceglb:filekit-dialogs-compose"
 zxing-core = { module = "com.google.zxing:core", version = "3.5.3" }
 zxing-javase = { module = "com.google.zxing:javase", version = "3.5.3" }
 zxing-cpp-android = { module = "io.github.zxing-cpp:android", version = "3.1.0" }
+gst1-java-core = { module = "org.freedesktop.gstreamer:gst1-java-core", version.ref = "gst1JavaCore" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
