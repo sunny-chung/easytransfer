@@ -20,15 +20,15 @@ dependencies {
 }
 
 android {
-    namespace = "com.sunnychung.application.easytransfer"
+    namespace = "com.sunnychung.application.easytransfer.android"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "com.sunnychung.application.easytransfer"
+        applicationId = "com.sunnychung.application.easytransfer.android"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
     }
     packaging {
         resources {
