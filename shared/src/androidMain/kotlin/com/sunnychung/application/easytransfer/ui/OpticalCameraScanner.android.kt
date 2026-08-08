@@ -3,10 +3,13 @@ package com.sunnychung.application.easytransfer.ui
 import android.Manifest
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.hardware.camera2.CaptureRequest
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.util.Range
 import android.util.Size
 import android.view.Surface
@@ -34,6 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import com.sunnychung.application.easytransfer.camera.OpticalCameraSettings
 import java.util.concurrent.ExecutorService
@@ -73,6 +78,22 @@ internal actual fun OpticalCameraScanner(
         },
     )
 
+    DisposableEffect(context, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val granted = context.hasCameraPermission()
+                hasCameraPermission = granted
+                if (granted) {
+                    permissionDenied = false
+                }
+            }
+        }
+        lifecycleOwner?.lifecycle?.addObserver(observer)
+        onDispose {
+            lifecycleOwner?.lifecycle?.removeObserver(observer)
+        }
+    }
+
     LaunchedEffect(hasCameraPermission) {
         if (!hasCameraPermission && !permissionDenied) {
             permissionLauncher.launch(Manifest.permission.CAMERA)
@@ -87,6 +108,11 @@ internal actual fun OpticalCameraScanner(
                 "Allow camera access to receive optical transfers."
             },
             modifier = modifier,
+            onClick = if (permissionDenied) {
+                { context.openCameraPermissionSettings() }
+            } else {
+                null
+            },
         )
         return
     }
@@ -194,6 +220,21 @@ private tailrec fun Context.findLifecycleOwner(): LifecycleOwner? = when (this) 
     is LifecycleOwner -> this
     is ContextWrapper -> baseContext.findLifecycleOwner()
     else -> null
+}
+
+private fun Context.hasCameraPermission(): Boolean =
+    ContextCompat.checkSelfPermission(
+        this,
+        Manifest.permission.CAMERA,
+    ) == PackageManager.PERMISSION_GRANTED
+
+private fun Context.openCameraPermissionSettings() {
+    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+        .setData(Uri.fromParts("package", packageName, null))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching {
+        startActivity(intent)
+    }
 }
 
 private class ZxingQrAnalyzer(

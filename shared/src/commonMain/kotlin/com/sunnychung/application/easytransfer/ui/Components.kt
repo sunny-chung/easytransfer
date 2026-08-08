@@ -3,6 +3,7 @@ package com.sunnychung.application.easytransfer.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,15 +20,27 @@ import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -272,9 +285,31 @@ internal fun HistoryRow(
     item: HistoryItemUi,
     modifier: Modifier = Modifier,
     showSource: Boolean = true,
+    onClick: (() -> Unit)? = null,
+    onDeleteClick: (() -> Unit)? = null,
+    showActionMenu: Boolean = false,
+    canPreview: Boolean = false,
+    canCopy: Boolean = false,
+    canOpen: Boolean = false,
+    canSave: Boolean = false,
+    canShare: Boolean = false,
+    onDismissActionMenu: () -> Unit = {},
+    onPreviewClick: () -> Unit = {},
+    onCopyClick: () -> Unit = {},
+    onOpenClick: () -> Unit = {},
+    onSaveClick: () -> Unit = {},
+    onShareClick: () -> Unit = {},
 ) {
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(onClick = onClick)
+                } else {
+                    Modifier
+                },
+            ),
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surface,
     ) {
@@ -318,12 +353,104 @@ internal fun HistoryRow(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Icon(
-                    imageVector = Icons.Outlined.MoreHoriz,
-                    contentDescription = "More actions",
-                    modifier = Modifier.padding(top = 7.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (onDeleteClick != null) {
+                    var showMenu by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.padding(top = 2.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.MoreHoriz,
+                                contentDescription = "More actions",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Delete") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Delete,
+                                        contentDescription = null,
+                                    )
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    onDeleteClick()
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+            DropdownMenu(
+                expanded = showActionMenu,
+                onDismissRequest = onDismissActionMenu,
+            ) {
+                if (canPreview) {
+                    DropdownMenuItem(
+                        text = { Text("Preview") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Outlined.Visibility,
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = onPreviewClick,
+                    )
+                }
+                if (canCopy) {
+                    DropdownMenuItem(
+                        text = { Text("Copy") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Outlined.ContentCopy,
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = onCopyClick,
+                    )
+                }
+                if (canOpen) {
+                    DropdownMenuItem(
+                        text = { Text("Open") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = onOpenClick,
+                    )
+                }
+                if (canSave) {
+                    DropdownMenuItem(
+                        text = { Text("Save As") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Outlined.Download,
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = onSaveClick,
+                    )
+                }
+                if (canShare) {
+                    DropdownMenuItem(
+                        text = { Text("Share") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Outlined.Share,
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = onShareClick,
+                    )
+                }
             }
         }
     }
@@ -333,6 +460,7 @@ internal fun HistoryRow(
 internal fun ActivityPanel(
     historyItems: List<HistoryItemUi>,
     onViewAllClick: () -> Unit,
+    onHistoryItemDeleted: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -350,6 +478,9 @@ internal fun ActivityPanel(
             HistoryRow(
                 item = item,
                 showSource = false,
+                onDeleteClick = onHistoryItemDeleted?.let { onDelete ->
+                    { onDelete(item.id) }
+                },
             )
         }
         Spacer(modifier = Modifier.weight(1f))

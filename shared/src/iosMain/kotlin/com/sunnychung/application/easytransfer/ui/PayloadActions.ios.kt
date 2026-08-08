@@ -14,7 +14,9 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.readValue
 import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import platform.CoreGraphics.CGRectZero
 import platform.Foundation.NSData
 import platform.Foundation.NSFileManager
@@ -47,7 +49,9 @@ internal actual fun rememberPayloadActions(
             override fun open(payload: TransferPayload) {
                 coroutineScope.launch {
                     runCatching {
-                        val fileUrl = payload.writeToPreviewFile()
+                        val fileUrl = withContext(Dispatchers.Default) {
+                            payload.writeToPreviewFile()
+                        }
                         documentPreviewer.open(fileUrl)
                     }.onFailure {
                         currentOnError.value("No app could open this received item.")
@@ -58,8 +62,11 @@ internal actual fun rememberPayloadActions(
             override fun share(payload: TransferPayload) {
                 coroutineScope.launch {
                     runCatching {
-                        val file = FileKit.cacheDir / payload.safeSuggestedFileName()
-                        file.write(payload.bytes)
+                        val file = withContext(Dispatchers.Default) {
+                            val file = FileKit.cacheDir / payload.safeSuggestedFileName()
+                            file.write(payload.bytes)
+                            file
+                        }
                         shareLauncher.launch(file)
                     }.onFailure {
                         currentOnError.value("The received item could not be shared.")

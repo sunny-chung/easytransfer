@@ -1,0 +1,44 @@
+CREATE TABLE IF NOT EXISTS history_record (
+    id TEXT NOT NULL PRIMARY KEY,
+    kind TEXT NOT NULL,
+    status TEXT NOT NULL,
+    title TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    source_label TEXT NOT NULL,
+    payload_file_name TEXT NOT NULL UNIQUE,
+    payload_name TEXT,
+    payload_media_type TEXT,
+    payload_size_bytes INTEGER NOT NULL,
+    created_at_millis INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS history_created_at_idx ON history_record(created_at_millis DESC, id DESC);
+
+selectAll:
+SELECT id, kind, status, title, detail, source_label, payload_file_name, payload_name,
+    payload_media_type, payload_size_bytes, created_at_millis
+FROM history_record
+ORDER BY created_at_millis DESC, id DESC;
+
+findById:
+SELECT id, kind, status, title, detail, source_label, payload_file_name, payload_name,
+    payload_media_type, payload_size_bytes, created_at_millis
+FROM history_record
+WHERE id = ?;
+
+selectPayloadFileNames:
+SELECT payload_file_name
+FROM history_record;
+
+insertRecord:
+INSERT INTO history_record (
+    id, kind, status, title, detail, source_label, payload_file_name, payload_name,
+    payload_media_type, payload_size_bytes, created_at_millis
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteById:
+DELETE FROM history_record
+WHERE id = ?;
+
+deleteAll:
+DELETE FROM history_record;

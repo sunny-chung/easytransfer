@@ -18,11 +18,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -44,6 +46,8 @@ internal fun HomeScreen(
     onHistoryClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val greeting = greetingForHour(currentLocalHour())
+    val uriHandler = LocalUriHandler.current
     BoxWithConstraints(modifier = modifier) {
         val wideContent = maxWidth >= 720.dp
         Column(
@@ -55,13 +59,13 @@ internal fun HomeScreen(
         ) {
             if (showPageTitle) {
                 PageHeading(
-                    title = "Good afternoon",
+                    title = greeting,
                     subtitle = "Move anything between screens with light and a camera.",
                 )
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = "Good afternoon",
+                        text = greeting,
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                     )
@@ -111,8 +115,41 @@ internal fun HomeScreen(
                     }
                 }
             }
+
+            ProtocolAcknowledgement(
+                onAuthorClick = {
+                    uriHandler.openUri("https://github.com/bashalarmistalt/decimen-optical-transfer/")
+                },
+            )
         }
     }
+}
+
+@Composable
+private fun ProtocolAcknowledgement(
+    onAuthorClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Optical transfer protocol is developed by",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TextButton(onClick = onAuthorClick) {
+            Text("Bash Alarmist")
+        }
+    }
+}
+
+private fun greetingForHour(hour: Int): String = when (hour) {
+    in 5..11 -> "Good morning"
+    in 12..16 -> "Good afternoon"
+    in 17..20 -> "Good evening"
+    else -> "Good night"
 }
 
 @Composable

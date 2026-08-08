@@ -4,4 +4,6 @@ PRODUCT_NAME=EasyTransfer
 PRODUCT_BUNDLE_IDENTIFIER=com.sunnychung.application.easytransfer.EasyTransfer$(TEAM_ID)
 
 CURRENT_PROJECT_VERSION=1
-MARKETING_VERSION=1.0
+MARKETING_VERSION=1.0.0
+
+OTHER_LDFLAGS=$(inherited) -lsqlite3

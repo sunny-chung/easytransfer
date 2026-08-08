@@ -3,6 +3,7 @@ package com.sunnychung.application.easytransfer.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -48,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalUriHandler
@@ -76,6 +78,8 @@ import com.sunnychung.application.easytransfer.ui.model.ReceivedItemUi
 import kotlin.math.roundToInt
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Preview(
     name = "Receive screen",
@@ -172,6 +176,8 @@ private fun ScannerPanel(
     }
     val cameraWidthOptions = supportedOpticalCameraWidths(effectiveCaptureFps)
     val decodeWorkerOptions = remember { supportedOpticalDecodeWorkers() }
+    var hasAppliedInitialCameraWidth by remember { mutableStateOf(false) }
+    var hasAppliedInitialDecodeWorkers by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf("Waiting for an optical transfer") }
     var rateWindowStart by remember { mutableStateOf(TimeSource.Monotonic.markNow()) }
     var framesAtRateWindowStart by remember { mutableStateOf(0) }
@@ -182,8 +188,16 @@ private fun ScannerPanel(
     var completedStatsMessage by remember { mutableStateOf<String?>(null) }
     KeepScreenAwake(active = cameraEnabled)
     LaunchedEffect(decodeWorkerOptions) {
-        if (cameraSettings.decodeWorkers !in decodeWorkerOptions) {
-            cameraSettings = cameraSettings.copy(decodeWorkers = decodeWorkerOptions.first())
+        val preferredDecodeWorkers = decodeWorkerOptions.firstOrNull { workers -> workers.workerCount == 3 }
+            ?: decodeWorkerOptions.lastOrNull()
+        when {
+            !hasAppliedInitialDecodeWorkers && preferredDecodeWorkers != null -> {
+                cameraSettings = cameraSettings.copy(decodeWorkers = preferredDecodeWorkers)
+                hasAppliedInitialDecodeWorkers = true
+            }
+            cameraSettings.decodeWorkers !in decodeWorkerOptions -> {
+                cameraSettings = cameraSettings.copy(decodeWorkers = preferredDecodeWorkers ?: cameraSettings.decodeWorkers)
+            }
         }
     }
     LaunchedEffect(cameraFpsOptions) {
@@ -209,12 +223,21 @@ private fun ScannerPanel(
         clearReceiverState()
     }
     LaunchedEffect(cameraWidthOptions) {
-        if (cameraSettings.width !in cameraWidthOptions) {
-            cameraSettings = cameraSettings.copy(
-                width = cameraWidthOptions.firstOrNull { it.width >= cameraSettings.width.width }
-                    ?: cameraWidthOptions.lastOrNull()
-                    ?: cameraSettings.width,
-            )
+        val highestResolution = cameraWidthOptions.maxByOrNull { width ->
+            width.width.toLong() * width.height.toLong()
+        }
+        when {
+            !hasAppliedInitialCameraWidth && highestResolution != null -> {
+                cameraSettings = cameraSettings.copy(width = highestResolution)
+                hasAppliedInitialCameraWidth = true
+            }
+            cameraSettings.width !in cameraWidthOptions -> {
+                cameraSettings = cameraSettings.copy(
+                    width = cameraWidthOptions.firstOrNull { it.width >= cameraSettings.width.width }
+                        ?: highestResolution
+                        ?: cameraSettings.width,
+                )
+            }
         }
     }
     Surface(
@@ -530,9 +553,18 @@ internal fun CameraTargetOverlay(
 internal fun CameraMessage(
     message: String,
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
 ) {
+    val clickableModifier = if (onClick != null) {
+        Modifier.clickable(onClick = onClick)
+    } else {
+        Modifier
+    }
     Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .then(clickableModifier)
+            .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -713,6 +745,16 @@ private fun ReceivedActionPrompt(
             }
             if (payload?.kind == TransferKind.Link) {
                 OutlinedButton(
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(payload.text().orEmpty()))
+                        actionMessage = "Copied to clipboard"
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Outlined.ContentCopy, contentDescription = null)
+                    Text("Copy link", modifier = Modifier.padding(start = 8.dp))
+                }
+                OutlinedButton(
                     onClick = { showTextPreview = true },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
@@ -783,7 +825,7 @@ private fun ReceivedActionPrompt(
 }
 
 @Composable
-private fun TextPreviewDialog(
+internal fun TextPreviewDialog(
     preview: TransferTextPreview,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -838,13 +880,19 @@ private fun TextPreviewDialog(
 }
 
 @Composable
-private fun ImagePreviewDialog(
+internal fun ImagePreviewDialog(
     payload: TransferPayload,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val imageBitmap = remember(payload.bytes) {
-        payload.bytes.decodePreviewImageBitmap()
+    var imageBitmap by remember(payload.bytes) { mutableStateOf<ImageBitmap?>(null) }
+    var isDecoding by remember(payload.bytes) { mutableStateOf(true) }
+    LaunchedEffect(payload.bytes) {
+        isDecoding = true
+        imageBitmap = withContext(Dispatchers.Default) {
+            payload.bytes.decodePreviewImageBitmap()
+        }
+        isDecoding = false
     }
 
     Dialog(
@@ -873,7 +921,15 @@ private fun ImagePreviewDialog(
                         onClick = onDismiss,
                     )
                 }
-                if (imageBitmap != null) {
+                val decodedImageBitmap = imageBitmap
+                if (isDecoding) {
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                } else if (decodedImageBitmap != null) {
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -882,7 +938,7 @@ private fun ImagePreviewDialog(
                         contentAlignment = Alignment.Center,
                     ) {
                         Image(
-                            bitmap = imageBitmap,
+                            bitmap = decodedImageBitmap,
                             contentDescription = payload.safeSuggestedFileName(),
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Fit,
@@ -909,10 +965,10 @@ private fun ImagePreviewDialog(
     }
 }
 
-private fun TransferPayload.canPreviewImage(): Boolean =
+internal fun TransferPayload.canPreviewImage(): Boolean =
     kind == TransferKind.Image || actionMediaType().startsWith("image/")
 
-private fun TransferPayload.canPreviewVideo(): Boolean =
+internal fun TransferPayload.canPreviewVideo(): Boolean =
     false // actionMediaType().startsWith("video/")
 
 private fun List<OpticalCaptureFps>.preferredCaptureFps(): OpticalCaptureFps =

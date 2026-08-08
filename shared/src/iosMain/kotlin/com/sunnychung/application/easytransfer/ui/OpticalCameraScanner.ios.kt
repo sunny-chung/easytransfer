@@ -80,11 +80,14 @@ import platform.CoreMedia.CMVideoFormatDescriptionGetDimensions
 import platform.Foundation.NSData
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSNumber
+import platform.Foundation.NSURL
 import platform.Foundation.valueForKey
 import platform.QuartzCore.CATransaction
 import platform.QuartzCore.kCATransactionDisableActions
+import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationDidEnterBackgroundNotification
+import platform.UIKit.UIApplicationOpenSettingsURLString
 import platform.UIKit.UIApplicationWillEnterForegroundNotification
 import platform.UIKit.UIApplicationWillResignActiveNotification
 import platform.UIKit.UIView
@@ -106,6 +109,19 @@ internal actual fun OpticalCameraScanner(
     }
     var cameraError by remember { mutableStateOf<String?>(null) }
 
+    DisposableEffect(Unit) {
+        val observer = NSNotificationCenter.defaultCenter.addObserverForName(
+            name = UIApplicationDidBecomeActiveNotification,
+            `object` = null,
+            queue = null,
+        ) {
+            permissionStatus = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
+        }
+        onDispose {
+            NSNotificationCenter.defaultCenter.removeObserver(observer)
+        }
+    }
+
     LaunchedEffect(Unit) {
         if (permissionStatus == AVAuthorizationStatusNotDetermined) {
             AVCaptureDevice.requestAccessForMediaType(AVMediaTypeVideo) { granted ->
@@ -123,6 +139,7 @@ internal actual fun OpticalCameraScanner(
             CameraMessage(
                 message = "Camera access is required. Enable it in system settings and return here.",
                 modifier = modifier,
+                onClick = ::openCameraPermissionSettings,
             )
             return
         }
@@ -166,6 +183,16 @@ internal actual fun OpticalCameraScanner(
             CameraTargetOverlay()
         }
         cameraError?.let { message -> CameraMessage(message = message) }
+    }
+}
+
+private fun openCameraPermissionSettings() {
+    NSURL.URLWithString(UIApplicationOpenSettingsURLString)?.let { settingsUrl ->
+        UIApplication.sharedApplication.openURL(
+            url = settingsUrl,
+            options = emptyMap<Any?, Any>(),
+            completionHandler = null,
+        )
     }
 }
 

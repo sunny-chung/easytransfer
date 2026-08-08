@@ -67,6 +67,9 @@ fun EasyTransferScreen(
     onTransferStarted: (TransferPayload) -> Unit = {},
     onTransferReceived: (TransferPayload) -> Unit = {},
     onDismissReceivePrompt: () -> Unit = {},
+    onHistoryItemDeleted: (String) -> Unit = {},
+    onHistoryCleared: () -> Unit = {},
+    onHistoryPayloadRequested: (String) -> TransferPayload? = { null },
     cameraEnabled: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -91,6 +94,9 @@ fun EasyTransferScreen(
                 onTransferStarted = onTransferStarted,
                 onTransferReceived = onTransferReceived,
                 onDismissReceivePrompt = onDismissReceivePrompt,
+                onHistoryItemDeleted = onHistoryItemDeleted,
+                onHistoryCleared = onHistoryCleared,
+                onHistoryPayloadRequested = onHistoryPayloadRequested,
                 cameraEnabled = cameraEnabled,
                 sendDraftState = sendDraftState,
             )
@@ -102,6 +108,9 @@ fun EasyTransferScreen(
                 onTransferStarted = onTransferStarted,
                 onTransferReceived = onTransferReceived,
                 onDismissReceivePrompt = onDismissReceivePrompt,
+                onHistoryItemDeleted = onHistoryItemDeleted,
+                onHistoryCleared = onHistoryCleared,
+                onHistoryPayloadRequested = onHistoryPayloadRequested,
                 cameraEnabled = cameraEnabled,
                 sendDraftState = sendDraftState,
             )
@@ -113,6 +122,9 @@ fun EasyTransferScreen(
                 onTransferStarted = onTransferStarted,
                 onTransferReceived = onTransferReceived,
                 onDismissReceivePrompt = onDismissReceivePrompt,
+                onHistoryItemDeleted = onHistoryItemDeleted,
+                onHistoryCleared = onHistoryCleared,
+                onHistoryPayloadRequested = onHistoryPayloadRequested,
                 cameraEnabled = cameraEnabled,
                 sendDraftState = sendDraftState,
             )
@@ -128,16 +140,16 @@ private fun CompactAppLayout(
     onTransferStarted: (TransferPayload) -> Unit,
     onTransferReceived: (TransferPayload) -> Unit,
     onDismissReceivePrompt: () -> Unit,
+    onHistoryItemDeleted: (String) -> Unit,
+    onHistoryCleared: () -> Unit,
+    onHistoryPayloadRequested: (String) -> TransferPayload?,
     cameraEnabled: Boolean,
     sendDraftState: SendDraftState,
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            CompactHeader(
-                title = state.selectedSection.label,
-                onSettingsClick = { onSectionSelected(AppSection.Settings) },
-            )
+            CompactHeader(title = state.selectedSection.label)
         },
         bottomBar = {
             NavigationBar(
@@ -167,6 +179,9 @@ private fun CompactAppLayout(
             onTransferStarted = onTransferStarted,
             onTransferReceived = onTransferReceived,
             onDismissReceivePrompt = onDismissReceivePrompt,
+            onHistoryItemDeleted = onHistoryItemDeleted,
+            onHistoryCleared = onHistoryCleared,
+            onHistoryPayloadRequested = onHistoryPayloadRequested,
             cameraEnabled = cameraEnabled,
             sendDraftState = sendDraftState,
             showPageTitle = false,
@@ -185,6 +200,9 @@ private fun MediumAppLayout(
     onTransferStarted: (TransferPayload) -> Unit,
     onTransferReceived: (TransferPayload) -> Unit,
     onDismissReceivePrompt: () -> Unit,
+    onHistoryItemDeleted: (String) -> Unit,
+    onHistoryCleared: () -> Unit,
+    onHistoryPayloadRequested: (String) -> TransferPayload?,
     cameraEnabled: Boolean,
     sendDraftState: SendDraftState,
 ) {
@@ -200,6 +218,9 @@ private fun MediumAppLayout(
             onTransferStarted = onTransferStarted,
             onTransferReceived = onTransferReceived,
             onDismissReceivePrompt = onDismissReceivePrompt,
+            onHistoryItemDeleted = onHistoryItemDeleted,
+            onHistoryCleared = onHistoryCleared,
+            onHistoryPayloadRequested = onHistoryPayloadRequested,
             cameraEnabled = cameraEnabled,
             sendDraftState = sendDraftState,
             showPageTitle = true,
@@ -216,6 +237,9 @@ private fun ExpandedAppLayout(
     onTransferStarted: (TransferPayload) -> Unit,
     onTransferReceived: (TransferPayload) -> Unit,
     onDismissReceivePrompt: () -> Unit,
+    onHistoryItemDeleted: (String) -> Unit,
+    onHistoryCleared: () -> Unit,
+    onHistoryPayloadRequested: (String) -> TransferPayload?,
     cameraEnabled: Boolean,
     sendDraftState: SendDraftState,
 ) {
@@ -231,6 +255,9 @@ private fun ExpandedAppLayout(
             onTransferStarted = onTransferStarted,
             onTransferReceived = onTransferReceived,
             onDismissReceivePrompt = onDismissReceivePrompt,
+            onHistoryItemDeleted = onHistoryItemDeleted,
+            onHistoryCleared = onHistoryCleared,
+            onHistoryPayloadRequested = onHistoryPayloadRequested,
             cameraEnabled = cameraEnabled,
             sendDraftState = sendDraftState,
             showPageTitle = true,
@@ -239,6 +266,7 @@ private fun ExpandedAppLayout(
         ActivityPanel(
             historyItems = state.historyItems,
             onViewAllClick = { onSectionSelected(AppSection.History) },
+            onHistoryItemDeleted = onHistoryItemDeleted,
             modifier = Modifier
                 .width(340.dp)
                 .fillMaxHeight(),
@@ -249,7 +277,6 @@ private fun ExpandedAppLayout(
 @Composable
 private fun CompactHeader(
     title: String,
-    onSettingsClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -267,11 +294,6 @@ private fun CompactHeader(
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
         )
-        NavigationIconButton(
-            icon = Icons.Outlined.Settings,
-            contentDescription = "Settings",
-            onClick = onSettingsClick,
-        )
     }
 }
 
@@ -287,7 +309,7 @@ private fun AppNavigationRail(
             BrandMark(modifier = Modifier.padding(vertical = 20.dp))
         },
     ) {
-        AppSection.entries.forEach { section ->
+        PrimarySections.forEach { section ->
             NavigationRailItem(
                 selected = selectedSection == section,
                 onClick = { onSectionSelected(section) },
@@ -332,7 +354,7 @@ private fun AppSidebar(
                 .weight(1f)
                 .padding(top = 20.dp),
         ) {
-            AppSection.entries.forEach { section ->
+            PrimarySections.forEach { section ->
                 SidebarItem(
                     label = section.label,
                     icon = section.icon(),
@@ -369,6 +391,9 @@ private fun AppSectionContent(
     onTransferStarted: (TransferPayload) -> Unit,
     onTransferReceived: (TransferPayload) -> Unit,
     onDismissReceivePrompt: () -> Unit,
+    onHistoryItemDeleted: (String) -> Unit,
+    onHistoryCleared: () -> Unit,
+    onHistoryPayloadRequested: (String) -> TransferPayload?,
     cameraEnabled: Boolean,
     sendDraftState: SendDraftState,
     showPageTitle: Boolean,
@@ -406,6 +431,9 @@ private fun AppSectionContent(
         AppSection.History -> HistoryScreen(
             historyItems = state.historyItems,
             showPageTitle = showPageTitle,
+            onHistoryItemDeleted = onHistoryItemDeleted,
+            onHistoryCleared = onHistoryCleared,
+            onHistoryPayloadRequested = onHistoryPayloadRequested,
             modifier = modifier,
         )
 

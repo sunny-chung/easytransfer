@@ -19,6 +19,7 @@ enum class TransferStatus {
 }
 
 data class HistoryItemUi(
+    val id: String,
     val title: String,
     val detail: String,
     val kind: TransferKind,
@@ -45,6 +46,7 @@ data class EasyTransferUiState(
 
 object PreviewData {
     val receivedHistoryItem = HistoryItemUi(
+        id = "preview-received",
         title = "Project brief.pdf",
         detail = "PDF document · 2.4 MB",
         kind = TransferKind.File,
@@ -55,6 +57,7 @@ object PreviewData {
 
     val historyItems = listOf(
         HistoryItemUi(
+            id = "preview-trip-photos",
             title = "Trip photos.zip",
             detail = "24 files · 18.4 MB",
             kind = TransferKind.File,
@@ -63,6 +66,7 @@ object PreviewData {
             sourceLabel = "Alex's phone",
         ),
         HistoryItemUi(
+            id = "preview-design-review",
             title = "Design review notes",
             detail = "Looks good—move the primary action…",
             kind = TransferKind.Text,
@@ -71,6 +75,7 @@ object PreviewData {
             sourceLabel = "Office Mac",
         ),
         HistoryItemUi(
+            id = "preview-coffee-map",
             title = "maps.app.goo.gl/coffee",
             detail = "Coffee shop directions",
             kind = TransferKind.Link,
@@ -79,6 +84,7 @@ object PreviewData {
             sourceLabel = "Pixel Tablet",
         ),
         HistoryItemUi(
+            id = "preview-whiteboard",
             title = "whiteboard.jpg",
             detail = "3024 × 4032 · 2.8 MB",
             kind = TransferKind.Image,

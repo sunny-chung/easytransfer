@@ -36,12 +36,14 @@ enum class OpticalDecodeWorkers(
 ) {
     Workers2(label = "2", workerCount = 2),
     Workers3(label = "3", workerCount = 3),
+    Workers4(label = "4", workerCount = 4),
+    Workers5(label = "5", workerCount = 5),
 }
 
 data class OpticalCameraSettings(
-    val width: OpticalCameraWidth = OpticalCameraWidth.Width1280,
+    val width: OpticalCameraWidth = OpticalCameraWidth.Width1920,
     val captureFps: OpticalCaptureFps = OpticalCaptureFps.Fps60,
-    val decodeWorkers: OpticalDecodeWorkers = OpticalDecodeWorkers.Workers2,
+    val decodeWorkers: OpticalDecodeWorkers = OpticalDecodeWorkers.Workers3,
 ) {
     val targetWidth: Int
         get() = width.width

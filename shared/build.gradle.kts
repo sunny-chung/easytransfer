@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    alias(libs.plugins.sqldelight)
 }
 
 kotlin {
@@ -15,6 +16,7 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "Shared"
             isStatic = true
+            linkerOpts("-lsqlite3")
         }
     }
     
@@ -51,6 +53,7 @@ kotlin {
             implementation(libs.androidx.core.ktx)
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.compose.uiTooling)
+            implementation(libs.sqldelight.android.driver)
             implementation(libs.zxing.core)
             implementation(libs.zxing.cpp.android)
         }
@@ -59,6 +62,10 @@ kotlin {
             implementation(libs.zxing.javase)
             implementation(libs.camera.core)
             implementation(libs.gst1.java.core)
+            implementation(libs.sqldelight.sqlite.driver)
+        }
+        iosMain.dependencies {
+            implementation(libs.sqldelight.native.driver)
         }
         commonMain.dependencies {
             api(project(":decimen-optical-transfer-kmp"))
@@ -72,6 +79,7 @@ kotlin {
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(libs.fileKit.dialogsCompose)
+            implementation(libs.sqldelight.runtime)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -85,4 +93,12 @@ dependencies {
 
 configurations.configureEach {
     exclude(group = "io.coil-kt.coil3")
+}
+
+sqldelight {
+    databases {
+        create("HistoryDatabase") {
+            packageName.set("com.sunnychung.application.easytransfer.db")
+        }
+    }
 }

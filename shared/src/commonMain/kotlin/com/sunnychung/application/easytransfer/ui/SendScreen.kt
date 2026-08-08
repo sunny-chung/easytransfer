@@ -59,8 +59,10 @@ import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Stable
 internal class SendDraftState {
@@ -96,12 +98,16 @@ internal fun SendScreen(
         if (file != null) {
             coroutineScope.launch {
                 runCatching {
-                    TransferPayload(
-                        kind = TransferKind.Image,
-                        bytes = file.readBytes(),
-                        name = file.name,
-                        mediaType = file.mimeType()?.toString(),
-                    )
+                    withContext(Dispatchers.Default) {
+                        TransferPayload(
+                            kind = TransferKind.Image,
+                            bytes = file.readBytes(),
+                            name = file.name,
+                            mediaType = file.mimeType()?.toString()?.takeIf { mediaType ->
+                                mediaType.startsWith("image/")
+                            } ?: "image/*",
+                        )
+                    }
                 }.onSuccess {
                     draft.selectedFile = it
                     draft.fileError = null
@@ -115,12 +121,14 @@ internal fun SendScreen(
         if (file != null) {
             coroutineScope.launch {
                 runCatching {
-                    TransferPayload(
-                        kind = TransferKind.File,
-                        bytes = file.readBytes(),
-                        name = file.name,
-                        mediaType = file.mimeType()?.toString(),
-                    )
+                    withContext(Dispatchers.Default) {
+                        TransferPayload(
+                            kind = TransferKind.File,
+                            bytes = file.readBytes(),
+                            name = file.name,
+                            mediaType = file.mimeType()?.toString(),
+                        )
+                    }
                 }.onSuccess {
                     draft.selectedFile = it
                     draft.fileError = null
@@ -131,23 +139,20 @@ internal fun SendScreen(
         }
     }
 
-    LaunchedEffect(activeKind) {
-        if (draft.selectedFile?.kind != activeKind) draft.selectedFile = null
-        draft.fileError = null
-    }
-
     BoxWithConstraints(modifier = modifier) {
         val wideContent = maxWidth >= 720.dp
+        val selectedFileForKind = draft.selectedFile?.takeIf { payload -> payload.kind == activeKind }
         val readyPayload = when (activeKind) {
             TransferKind.Text -> draft.textPayload.takeIf { it.isNotBlank() }?.let(TransferPayload::text)
             TransferKind.Link -> draft.linkPayload.takeIf { it.isValidTransferUri() }?.let(TransferPayload::link)
             TransferKind.Image,
             TransferKind.File,
-            -> draft.selectedFile
+            -> selectedFileForKind
         }
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .dismissKeyboardOnTap()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = if (wideContent) 40.dp else 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
@@ -172,7 +177,7 @@ internal fun SendScreen(
                         kind = activeKind,
                         textPayload = draft.textPayload,
                         linkPayload = draft.linkPayload,
-                        selectedFile = draft.selectedFile,
+                        selectedFile = selectedFileForKind,
                         fileError = draft.fileError,
                         onTextPayloadChange = { draft.textPayload = it },
                         onLinkPayloadChange = { draft.linkPayload = it },
@@ -200,7 +205,7 @@ internal fun SendScreen(
                         kind = activeKind,
                         textPayload = draft.textPayload,
                         linkPayload = draft.linkPayload,
-                        selectedFile = draft.selectedFile,
+                        selectedFile = selectedFileForKind,
                         fileError = draft.fileError,
                         onTextPayloadChange = { draft.textPayload = it },
                         onLinkPayloadChange = { draft.linkPayload = it },
@@ -394,7 +399,7 @@ private fun TextPayloadField(
         onValueChange = onValueChange,
         modifier = modifier
             .fillMaxWidth()
-            .height(if (kind == TransferKind.Text) 154.dp else 88.dp),
+            .heightIn(min = if (kind == TransferKind.Text) 154.dp else 64.dp),
         label = { Text(if (kind == TransferKind.Text) "Message" else "Link or URI") },
         supportingText = if (isLinkInvalid) {
             { Text("Enter a complete URI with a scheme, such as https:, mailto:, or myapp:") }
@@ -597,21 +602,41 @@ private fun OpticalSendDialog(
 ) {
 //    BoostScreenBrightness(active = true)
     KeepScreenAwake(active = true)
-    val senderResult = remember(payload, transferSettings) {
-        runCatching {
-            OpticalSender(
-                payload = payload,
-                blockLength = transferSettings.blockLength,
-                compressionEnabled = transferSettings.isCompressionEnabled,
-            )
+    var sender by remember(payload, transferSettings) { mutableStateOf<OpticalSender?>(null) }
+    var senderErrorMessage by remember(payload, transferSettings) { mutableStateOf<String?>(null) }
+    var frame by remember(payload, transferSettings) { mutableStateOf<ByteArray?>(null) }
+    LaunchedEffect(payload, transferSettings) {
+        sender = null
+        senderErrorMessage = null
+        frame = null
+        delay(120)
+        val senderResult = withContext(Dispatchers.Default) {
+            runCatching {
+                OpticalSender(
+                    payload = payload,
+                    blockLength = transferSettings.blockLength,
+                    compressionEnabled = transferSettings.isCompressionEnabled,
+                )
+            }
         }
+        senderResult
+            .onSuccess { preparedSender ->
+                sender = preparedSender
+                frame = withContext(Dispatchers.Default) {
+                    preparedSender.nextFrame()
+                }
+            }
+            .onFailure { cause ->
+                senderErrorMessage = cause.message ?: "Transfer cannot start"
+            }
     }
-    val sender = senderResult.getOrNull()
-    var frame by remember(sender) { mutableStateOf(sender?.nextFrame()) }
-    LaunchedEffect(sender) {
-        while (sender != null) {
+    LaunchedEffect(sender, transferSettings) {
+        val activeSender = sender ?: return@LaunchedEffect
+        while (true) {
             delay(transferSettings.frameIntervalMillis)
-            frame = sender.nextFrame()
+            frame = withContext(Dispatchers.Default) {
+                activeSender.nextFrame()
+            }
         }
     }
     Dialog(
@@ -673,30 +698,35 @@ private fun OpticalSendDialog(
                                 .padding(12.dp),
                         )
                     } else {
-                        Text(
-                            text = "This item is too large for one optical transfer.",
-                            color = MaterialTheme.colorScheme.error,
-                            textAlign = TextAlign.Center,
-                        )
+                        if (senderErrorMessage == null) {
+                            CameraMessage(message = "Preparing optical transfer")
+                        } else {
+                            Text(
+                                text = senderErrorMessage ?: "Transfer cannot start",
+                                color = MaterialTheme.colorScheme.error,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
                     }
                 }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (sender != null) {
+                    val preparedSender = sender
+                    if (preparedSender != null) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     }
                     Text(
-                        text = if (sender != null) {
+                        text = if (preparedSender != null) {
                             "${transferSettings.framesPerSecond} fps | " +
                                 "${transferSettings.frameBytes} bytes/frame | " +
                                 "ECC ${transferSettings.errorCorrection.label} | " +
-                                "compression ${sender.compression.label} | " +
-                                "${sender.originalPayloadLength.formatByteCount()} → " +
-                                sender.transmittedPayloadLength.formatByteCount()
+                                "compression ${preparedSender.compression.label} | " +
+                                "${preparedSender.originalPayloadLength.formatByteCount()} → " +
+                                preparedSender.transmittedPayloadLength.formatByteCount()
                         } else {
-                            senderResult.exceptionOrNull()?.message ?: "Transfer cannot start"
+                            senderErrorMessage ?: "Preparing transfer"
                         },
                         style = MaterialTheme.typography.labelLarge,
                     )

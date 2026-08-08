@@ -17,6 +17,8 @@ internal expect fun ByteQrCodeImage(
     modifier: Modifier = Modifier,
 )
 
+internal expect fun prewarmQrRenderer()
+
 @Composable
 internal fun QrCodeMatrixImage(
     matrix: List<BooleanArray>,

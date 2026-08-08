@@ -36,6 +36,7 @@ import com.sunnychung.application.easytransfer.camera.desktopCameraGrabber
 import java.awt.image.BufferedImage
 import java.nio.charset.StandardCharsets
 import java.util.EnumMap
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
 import kotlinx.coroutines.Dispatchers
@@ -66,6 +67,11 @@ internal actual fun OpticalCameraScanner(
                 "Allow camera access to receive optical transfers."
             },
             modifier = modifier,
+            onClick = if (permissionDenied) {
+                ::openCameraPermissionSettings
+            } else {
+                null
+            },
         )
         return
     }
@@ -137,6 +143,30 @@ private fun rememberDesktopCameraState(
 
     return stateHolder.cameraState.collectAsState()
 }
+
+private fun openCameraPermissionSettings() {
+    val osName = System.getProperty("os.name").lowercase(Locale.US)
+    when {
+        "mac" in osName -> startProcess(
+            "open",
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera",
+        )
+        "win" in osName -> startProcess(
+            "cmd",
+            "/c",
+            "start",
+            "ms-settings:privacy-webcam",
+        )
+        else -> startProcess("gnome-control-center", "privacy") ||
+            startProcess("xdg-open", "settings://privacy/camera")
+    }
+}
+
+private fun startProcess(vararg command: String): Boolean =
+    runCatching {
+        ProcessBuilder(*command).start()
+        true
+    }.getOrDefault(false)
 
 private class JvmOpticalQrScannerPlugin(
     cameraSettings: OpticalCameraSettings,

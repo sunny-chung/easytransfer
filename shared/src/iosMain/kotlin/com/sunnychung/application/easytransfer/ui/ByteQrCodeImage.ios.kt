@@ -1,7 +1,12 @@
 package com.sunnychung.application.easytransfer.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.interop.UIKitView
 import com.sunnychung.application.easytransfer.optical.OpticalErrorCorrection
@@ -19,6 +24,9 @@ import platform.UIKit.UIImageView
 import platform.UIKit.UIViewContentMode
 import platform.UIKit.accessibilityLabel
 import platform.UIKit.isAccessibilityElement
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalForeignApi::class)
 @Composable
@@ -28,8 +36,20 @@ internal actual fun ByteQrCodeImage(
     contentDescription: String?,
     modifier: Modifier,
 ) {
-    val image = remember(frame, errorCorrection) {
-        frame.toQrImage(errorCorrection)
+    var image by remember { mutableStateOf<UIImage?>(null) }
+    val renderRequests = remember { Channel<QrRenderRequest>(Channel.CONFLATED) }
+    DisposableEffect(renderRequests) {
+        onDispose { renderRequests.close() }
+    }
+    LaunchedEffect(frame, errorCorrection) {
+        renderRequests.trySend(QrRenderRequest(frame = frame, errorCorrection = errorCorrection))
+    }
+    LaunchedEffect(renderRequests) {
+        for (request in renderRequests) {
+            image = withContext(Dispatchers.Default) {
+                request.frame.toQrImage(request.errorCorrection)
+            }
+        }
     }
     UIKitView(
         factory = {
@@ -44,6 +64,15 @@ internal actual fun ByteQrCodeImage(
         modifier = modifier,
     )
 }
+
+internal actual fun prewarmQrRenderer() {
+    byteArrayOf(0).toQrImage(OpticalErrorCorrection.Low)
+}
+
+private data class QrRenderRequest(
+    val frame: ByteArray,
+    val errorCorrection: OpticalErrorCorrection,
+)
 
 @OptIn(ExperimentalForeignApi::class)
 private fun ByteArray.toQrImage(errorCorrection: OpticalErrorCorrection): UIImage? {

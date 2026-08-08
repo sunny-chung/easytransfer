@@ -1,23 +1,31 @@
 package com.sunnychung.application.easytransfer
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.tooling.preview.Preview
 import com.sunnychung.application.easytransfer.optical.TransferPayload
 import com.sunnychung.application.easytransfer.ui.EasyTransferScreen
 import com.sunnychung.application.easytransfer.ui.EasyTransferTheme
+import com.sunnychung.application.easytransfer.ui.displayName
 import com.sunnychung.application.easytransfer.ui.formatByteCount
 import com.sunnychung.application.easytransfer.ui.label
+import com.sunnychung.application.easytransfer.ui.prewarmQrRenderer
+import com.sunnychung.application.easytransfer.ui.rememberPersistentHistoryStore
 import com.sunnychung.application.easytransfer.ui.model.AppSection
 import com.sunnychung.application.easytransfer.ui.model.EasyTransferUiState
-import com.sunnychung.application.easytransfer.ui.model.HistoryItemUi
-import com.sunnychung.application.easytransfer.ui.model.ReceivedItemUi
 import com.sunnychung.application.easytransfer.optical.TransferKind
+import com.sunnychung.application.easytransfer.ui.model.PreviewData
+import com.sunnychung.application.easytransfer.ui.model.ReceivedItemUi
 import com.sunnychung.application.easytransfer.ui.model.TransferStatus
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Preview(
     name = "App shell",
@@ -27,10 +35,62 @@ import com.sunnychung.application.easytransfer.ui.model.TransferStatus
 @Composable
 fun App() {
     val isPreview = LocalInspectionMode.current
+    val coroutineScope = rememberCoroutineScope()
+    val historyStore = rememberPersistentHistoryStore()
     var selectedSection by remember { mutableStateOf(AppSection.Home) }
     var selectedKind by remember { mutableStateOf<TransferKind?>(null) }
-    var historyItems by remember { mutableStateOf(emptyList<HistoryItemUi>()) }
+    var historyItems by remember { mutableStateOf(PreviewData.historyItems.takeIf { isPreview }.orEmpty()) }
     var receivedPayload by remember { mutableStateOf<TransferPayload?>(null) }
+
+    LaunchedEffect(historyStore, isPreview) {
+        if (!isPreview) {
+            historyItems = withContext(Dispatchers.Default) {
+                historyStore.load()
+            }
+        }
+    }
+
+    LaunchedEffect(isPreview) {
+        if (!isPreview) {
+            withContext(Dispatchers.Default) {
+                prewarmQrRenderer()
+            }
+        }
+    }
+
+    fun addHistoryItem(payload: TransferPayload, status: TransferStatus) {
+        coroutineScope.launch {
+            runCatching {
+                withContext(Dispatchers.Default) {
+                    historyStore.add(payload, status)
+                }
+            }.onSuccess { item ->
+                historyItems = listOf(item) + historyItems
+            }
+        }
+    }
+
+    fun deleteHistoryItem(itemId: String) {
+        historyItems = historyItems.filterNot { item -> item.id == itemId }
+        coroutineScope.launch {
+            runCatching {
+                withContext(Dispatchers.Default) {
+                    historyStore.delete(itemId)
+                }
+            }
+        }
+    }
+
+    fun clearHistory() {
+        historyItems = emptyList()
+        coroutineScope.launch {
+            runCatching {
+                withContext(Dispatchers.Default) {
+                    historyStore.clear()
+                }
+            }
+        }
+    }
 
     EasyTransferTheme {
         EasyTransferScreen(
@@ -42,31 +102,29 @@ fun App() {
                 receivedPayload = receivedPayload,
             ),
             cameraEnabled = !isPreview,
-            onSectionSelected = { selectedSection = it },
+            onSectionSelected = { section ->
+                if (section != AppSection.Settings) {
+                    selectedSection = section
+                }
+            },
             onTransferKindSelected = {
                 selectedKind = it
                 selectedSection = AppSection.Send
             },
             onTransferStarted = { payload ->
-                historyItems = listOf(payload.toHistoryItem(TransferStatus.Sent)) + historyItems
+                addHistoryItem(payload, TransferStatus.Sent)
             },
             onTransferReceived = { payload ->
-                historyItems = listOf(payload.toHistoryItem(TransferStatus.Received)) + historyItems
+                addHistoryItem(payload, TransferStatus.Received)
                 receivedPayload = payload
             },
             onDismissReceivePrompt = { receivedPayload = null },
+            onHistoryItemDeleted = ::deleteHistoryItem,
+            onHistoryCleared = ::clearHistory,
+            onHistoryPayloadRequested = historyStore::loadPayload,
         )
     }
 }
-
-private fun TransferPayload.toHistoryItem(status: TransferStatus): HistoryItemUi = HistoryItemUi(
-    title = displayName(),
-    detail = "${kind.label} · ${bytes.size.formatByteCount()}",
-    kind = kind,
-    status = status,
-    timeLabel = "Just now",
-    sourceLabel = if (status == TransferStatus.Received) "Optical transfer" else "This device",
-)
 
 private fun TransferPayload.toReceivedItemUi(): ReceivedItemUi = ReceivedItemUi(
     title = displayName(),
@@ -75,12 +133,3 @@ private fun TransferPayload.toReceivedItemUi(): ReceivedItemUi = ReceivedItemUi(
     sizeLabel = bytes.size.formatByteCount(),
     sourceLabel = "Optical transfer",
 )
-
-private fun TransferPayload.displayName(): String = name ?: when (kind) {
-    TransferKind.Text -> textPreview(maxBytes = 256)?.chunks?.firstOrNull()
-        ?.lineSequence()?.firstOrNull()?.take(48).orEmpty().ifBlank { "Text" }
-    TransferKind.Link -> textPreview(maxBytes = 256)?.chunks?.firstOrNull()
-        .orEmpty().take(48).ifBlank { "Link" }
-    TransferKind.Image -> "Received image"
-    TransferKind.File -> "Received file"
-}

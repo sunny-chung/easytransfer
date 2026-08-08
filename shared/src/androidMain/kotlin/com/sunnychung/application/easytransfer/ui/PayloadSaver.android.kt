@@ -11,7 +11,9 @@ import com.sunnychung.application.easytransfer.optical.TransferPayload
 import io.github.vinceglb.filekit.dialogs.FileKitDialogSettings
 import io.github.vinceglb.filekit.dialogs.compose.rememberFileSaverLauncher
 import io.github.vinceglb.filekit.write
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 internal actual fun rememberPayloadSaver(
@@ -28,7 +30,11 @@ internal actual fun rememberPayloadSaver(
         val payload = pendingPayload
         if (destination != null && payload != null) {
             coroutineScope.launch {
-                runCatching { destination.write(payload.bytes) }
+                runCatching {
+                    withContext(Dispatchers.Default) {
+                        destination.write(payload.bytes)
+                    }
+                }
                     .onSuccess { currentOnSaved() }
                     .onFailure { currentOnError("The received file could not be saved.") }
             }
