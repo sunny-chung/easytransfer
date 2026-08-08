@@ -60,6 +60,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.sunnychung.application.easytransfer.camera.OpticalCameraSettings
 import com.sunnychung.application.easytransfer.camera.OpticalCaptureFps
+import com.sunnychung.application.easytransfer.camera.supportedOpticalCaptureFps
 import com.sunnychung.application.easytransfer.camera.supportedOpticalCameraWidths
 import com.sunnychung.application.easytransfer.camera.supportedOpticalDecodeWorkers
 import com.sunnychung.application.easytransfer.optical.OpticalReceiveProgress
@@ -163,9 +164,13 @@ private fun ScannerPanel(
     val receiver = remember { OpticalReceiver() }
     var progress by remember { mutableStateOf(OpticalReceiveProgress()) }
     var cameraSettings by remember { mutableStateOf(OpticalCameraSettings()) }
-    val cameraWidthOptions = remember(cameraSettings.captureFps) {
-        supportedOpticalCameraWidths(cameraSettings.captureFps)
+    val cameraFpsOptions = supportedOpticalCaptureFps()
+    val effectiveCaptureFps = if (cameraSettings.captureFps in cameraFpsOptions) {
+        cameraSettings.captureFps
+    } else {
+        cameraFpsOptions.preferredCaptureFps()
     }
+    val cameraWidthOptions = supportedOpticalCameraWidths(effectiveCaptureFps)
     val decodeWorkerOptions = remember { supportedOpticalDecodeWorkers() }
     var statusMessage by remember { mutableStateOf("Waiting for an optical transfer") }
     var rateWindowStart by remember { mutableStateOf(TimeSource.Monotonic.markNow()) }
@@ -179,6 +184,13 @@ private fun ScannerPanel(
     LaunchedEffect(decodeWorkerOptions) {
         if (cameraSettings.decodeWorkers !in decodeWorkerOptions) {
             cameraSettings = cameraSettings.copy(decodeWorkers = decodeWorkerOptions.first())
+        }
+    }
+    LaunchedEffect(cameraFpsOptions) {
+        if (cameraSettings.captureFps !in cameraFpsOptions) {
+            cameraSettings = cameraSettings.copy(
+                captureFps = effectiveCaptureFps,
+            )
         }
     }
     fun clearReceiverState() {
@@ -403,7 +415,7 @@ private fun ScannerPanel(
                 )
                 TuningOptionGroup(
                     title = "Capture FPS",
-                    options = OpticalCaptureFps.entries.toList(),
+                    options = cameraFpsOptions,
                     selectedOption = cameraSettings.captureFps,
                     onOptionSelected = { cameraSettings = cameraSettings.copy(captureFps = it) },
                     optionLabel = { "${it.label} fps" },
@@ -902,3 +914,8 @@ private fun TransferPayload.canPreviewImage(): Boolean =
 
 private fun TransferPayload.canPreviewVideo(): Boolean =
     false // actionMediaType().startsWith("video/")
+
+private fun List<OpticalCaptureFps>.preferredCaptureFps(): OpticalCaptureFps =
+    firstOrNull { fps -> fps == OpticalCaptureFps.Fps30 }
+        ?: firstOrNull()
+        ?: OpticalCaptureFps.Fps30

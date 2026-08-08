@@ -1,5 +1,7 @@
 package com.sunnychung.application.easytransfer.camera
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
 import platform.AVFoundation.AVCaptureDevice
@@ -16,14 +18,15 @@ import platform.AVFoundation.position
 import platform.CoreMedia.CMVideoFormatDescriptionGetDimensions
 
 @OptIn(ExperimentalForeignApi::class)
+@Composable
 internal actual fun supportedOpticalCameraWidths(
     captureFps: OpticalCaptureFps,
-): List<OpticalCameraWidth> {
+): List<OpticalCameraWidth> = remember(captureFps) {
     val frameRate = captureFps.framesPerSecond.toDouble()
     val device = preferredBackCameraDevice()
-        ?: return OpticalCameraWidth.defaults
+        ?: return@remember OpticalCameraWidth.defaults
 
-    return device.formats
+    device.formats
         .asSequence()
         .filterIsInstance<AVCaptureDeviceFormat>()
         .filter { format -> format.supportsFrameRate(frameRate) }
@@ -39,6 +42,21 @@ internal actual fun supportedOpticalCameraWidths(
         }
         .sortedBy { width -> width.width }
         .ifEmpty { OpticalCameraWidth.defaults }
+}
+
+@Composable
+internal actual fun supportedOpticalCaptureFps(): List<OpticalCaptureFps> = remember {
+    val device = preferredBackCameraDevice()
+        ?: return@remember listOf(OpticalCaptureFps.Fps30)
+    OpticalCaptureFps.entries
+        .filter { fps ->
+            val frameRate = fps.framesPerSecond.toDouble()
+            device.formats
+                .asSequence()
+                .filterIsInstance<AVCaptureDeviceFormat>()
+                .any { format -> format.supportsFrameRate(frameRate) }
+        }
+        .ifEmpty { listOf(OpticalCaptureFps.Fps30) }
 }
 
 internal actual fun supportedOpticalDecodeWorkers(): List<OpticalDecodeWorkers> =
