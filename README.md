@@ -1,35 +1,46 @@
-This is a Kotlin Multiplatform project targeting Android, iOS, Desktop (JVM).
+# NearbyTransfer / EasyTransfer
 
-* [/iosApp](./iosApp/iosApp) contains an iOS application. Even if you’re sharing your UI with Compose Multiplatform,
-  you need this entry point for your iOS app. This is also where you should add SwiftUI code for your project.
+This is a mini cross-platform app to allow data transmission between any two supported devices without a network connection. It is currently done by [optical transfer](https://github.com/bashalarmistalt/decimen-optical-transfer/), which means it is safe to share files even on a plane.
 
-* [/shared](./shared/src) is for code that will be shared across your Compose Multiplatform applications.
-  It contains several subfolders:
-  - [commonMain](./shared/src/commonMain/kotlin) is for code that’s common for all targets.
-  - Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
-    For example, if you want to use Apple’s CoreCrypto for the iOS part of your Kotlin app,
-    the [iosMain](./shared/src/iosMain/kotlin) folder would be the right place for such calls.
-    Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./shared/src/jvmMain/kotlin)
-    folder is the appropriate location.
+This project contains a Kotlin Multiplatform port of the [decimen optical transfer core](https://github.com/bashalarmistalt/decimen-optical-transfer/). The port is freely for other developers to make use of it under the [license](#License).
 
-### Running the apps
+Supported devices:
+- Android phones and tablets
+- iOS phones and tablets
+- macOS
+- Windows
+- Linux
 
-Use the run configurations provided by the run widget in your IDE's toolbar. You can also use these commands and options:
+To receive data, your device must have a camera.
 
-- Android app: `./gradlew :androidApp:assembleDebug`
-- Desktop app:
-  - Hot reload: `./gradlew :desktopApp:hotRun --auto`
-  - Standard run: `./gradlew :desktopApp:run`
-- iOS app: open the [/iosApp](./iosApp) directory in Xcode and run it from there.
+To send data, your device must have a display.
 
-### Running tests
+## Limitation
 
-Use the run button in your IDE's editor gutter, or run tests using Gradle tasks:
+1. In my testing, the highest transfer rate is about 55 KB/s.
+2. The camera must be able to focus on the animating QR code, or nothing could be scanned.
+3. You may have to tweak different options in both receiver and sender in order to transfer data steadily.
 
-- Android tests: `./gradlew :shared:testAndroidHostTest`
-- Desktop tests: `./gradlew :shared:jvmTest`
-- iOS tests: `./gradlew :shared:iosSimulatorArm64Test`
+## Bug Reporting
 
----
+If you encounter scanning issue, first check with the [official demo of the upstream project](https://github.com/bashalarmistalt/decimen-optical-transfer/). If you cannot scan even with the upstream project demo, report the bug there; otherwise, report to this repository.
 
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html)…
+For non-scanning issue, just report to this repository.
+
+## Privacy Policy
+
+Check [PRIVACY_POLICY.md](PRIVACY_POLICY.md).
+
+## License
+
+The license of the optical module is owned by the [upstream project](https://github.com/bashalarmistalt/decimen-optical-transfer/), which is snapshot to be [MIT license](decimen-optical-transfer-kmp/LICENSE).
+
+For the rest of this project, the license is [Apache 2.0](LICENSE.txt).
+
+## For Developers
+
+If you are interested in building or modifying the app yourself, check [this note](DEVELOPER_NOTE.md) to get started.
+
+## Roadmap
+
+It is planned to add a bluetooth functionality to facilitate file sharing.
