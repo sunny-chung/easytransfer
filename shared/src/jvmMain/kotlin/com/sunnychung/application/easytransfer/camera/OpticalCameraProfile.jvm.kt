@@ -2,18 +2,17 @@ package com.sunnychung.application.easytransfer.camera
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import java.awt.image.BufferedImage
-import java.awt.image.DataBufferInt
-import java.nio.ByteBuffer
+import org.bytedeco.ffmpeg.avdevice.AVDeviceInfo
+import org.bytedeco.ffmpeg.avdevice.AVDeviceInfoList
+import org.bytedeco.ffmpeg.global.avdevice.avdevice_free_list_devices
+import org.bytedeco.ffmpeg.global.avdevice.avdevice_list_input_sources
+import org.bytedeco.ffmpeg.global.avdevice.avdevice_register_all
+import org.bytedeco.ffmpeg.global.avformat.av_find_input_format
+import org.bytedeco.ffmpeg.global.avutil.AVMEDIA_TYPE_VIDEO
+import org.bytedeco.javacpp.Pointer
 import org.bytedeco.javacv.Frame
 import org.bytedeco.javacv.FFmpegFrameGrabber
 import org.bytedeco.javacv.FrameGrabber
-import org.bytedeco.javacv.Java2DFrameConverter
-import org.bytedeco.javacv.VideoInputFrameGrabber
-import org.freedesktop.gstreamer.Gst
-import org.freedesktop.gstreamer.Pipeline
-import org.freedesktop.gstreamer.State
-import org.freedesktop.gstreamer.elements.AppSink
 
 @Composable
 internal actual fun supportedOpticalCameraWidths(
@@ -31,20 +30,28 @@ internal actual fun supportedOpticalDecodeWorkers(): List<OpticalDecodeWorkers> 
     OpticalDecodeWorkers.entries.toList()
 
 internal fun desktopCameraGrabber(cameraSettings: OpticalCameraSettings): FrameGrabber =
-    createDesktopGrabber(cameraSettings).configuredFor(cameraSettings)
+    VerifiedFfmpegCameraGrabber(cameraSettings)
 
-private fun createDesktopGrabber(cameraSettings: OpticalCameraSettings): FrameGrabber = when (currentDesktopOperatingSystem()) {
+private fun createFfmpegGrabber(
+    cameraSettings: OpticalCameraSettings,
+    preferLinuxMjpeg: Boolean,
+): FFmpegFrameGrabber = when (currentDesktopOperatingSystem()) {
     DesktopOperatingSystem.Mac -> FFmpegFrameGrabber("0").apply {
         format = "avfoundation"
     }
-    DesktopOperatingSystem.Windows -> WindowsMediaFoundationCameraGrabber(cameraSettings)
-    DesktopOperatingSystem.Linux -> FFmpegFrameGrabber(bestLinuxVideoDevice())
-}
-
-private fun <T : FrameGrabber> T.configuredFor(cameraSettings: OpticalCameraSettings): T = apply {
+    DesktopOperatingSystem.Windows -> FFmpegFrameGrabber(firstWindowsVideoInput()).apply {
+        format = "dshow"
+        setOption("rtbufsize", WINDOWS_REAL_TIME_BUFFER_SIZE)
+    }
+    DesktopOperatingSystem.Linux -> FFmpegFrameGrabber(bestLinuxVideoDevice()).apply {
+        format = "video4linux2"
+        if (preferLinuxMjpeg) setOption("input_format", "mjpeg")
+    }
+}.apply {
     frameRate = cameraSettings.captureFps.framesPerSecond.toDouble()
     imageWidth = cameraSettings.targetWidth
     imageHeight = cameraSettings.targetHeight
+    numBuffers = 1
 }
 
 private fun desktopCameraWidths(): List<OpticalCameraWidth> = when (currentDesktopOperatingSystem()) {
@@ -83,6 +90,56 @@ private fun bestLinuxVideoDevice(): String {
         ?: defaultDevice.absolutePath
 }
 
+private fun firstWindowsVideoInput(): String {
+    avdevice_register_all()
+    val directShow = av_find_input_format("dshow")
+    if (directShow == null || directShow.isNull) {
+        throw FrameGrabber.Exception("FFmpeg DirectShow support is not available.")
+    }
+
+    val deviceList = AVDeviceInfoList(null as Pointer?)
+    val deviceCount = avdevice_list_input_sources(
+        directShow,
+        null as String?,
+        null,
+        deviceList,
+    )
+    return try {
+        if (deviceCount <= 0 || deviceList.isNull) {
+            throw FrameGrabber.Exception("No Windows camera was found by FFmpeg DirectShow.")
+        }
+        val videoDeviceIndices = (0 until deviceList.nb_devices())
+            .filter { index -> deviceList.devices(index).isVideoInput() }
+        val defaultDeviceIndex = deviceList.default_device()
+            .takeIf { index -> index in videoDeviceIndices }
+        val selectedDeviceIndex = defaultDeviceIndex ?: videoDeviceIndices.firstOrNull()
+            ?: throw FrameGrabber.Exception("FFmpeg DirectShow found no video input device.")
+        deviceList.devices(selectedDeviceIndex).deviceName().asDirectShowVideoInput()
+    } finally {
+        avdevice_free_list_devices(deviceList)
+    }
+}
+
+private fun AVDeviceInfo.isVideoInput(): Boolean {
+    if (deviceName().startsWith(DIRECT_SHOW_VIDEO_PREFIX, ignoreCase = true)) return true
+    val mediaTypes = media_types()
+    if (mediaTypes == null || mediaTypes.isNull) return false
+    return (0 until nb_media_types()).any { index ->
+        mediaTypes.get(index.toLong()) == AVMEDIA_TYPE_VIDEO
+    }
+}
+
+private fun AVDeviceInfo.deviceName(): String {
+    val name = device_name()
+    if (name == null || name.isNull) {
+        throw FrameGrabber.Exception("FFmpeg returned a camera without a device name.")
+    }
+    return name.getString()
+}
+
+private fun String.asDirectShowVideoInput(): String =
+    if (startsWith(DIRECT_SHOW_VIDEO_PREFIX, ignoreCase = true)) this else "$DIRECT_SHOW_VIDEO_PREFIX$this"
+
 private fun currentDesktopOperatingSystem(): DesktopOperatingSystem {
     val osName = System.getProperty("os.name").lowercase()
     return when {
@@ -98,139 +155,75 @@ private enum class DesktopOperatingSystem {
     Linux,
 }
 
-private class WindowsMediaFoundationCameraGrabber(
+private class VerifiedFfmpegCameraGrabber(
     private val cameraSettings: OpticalCameraSettings,
 ) : FrameGrabber() {
-    private var delegate: FrameGrabber? = null
+    private val delegateLock = Any()
+    private var delegate: FFmpegFrameGrabber? = null
 
-    override fun start() {
-        val nextDelegate = runCatching {
-            createGStreamerMediaFoundationDelegate()
-        }.getOrElse {
-            VideoInputFrameGrabber(0).configuredFor(cameraSettings).apply { start() }
+    override fun start() = synchronized(delegateLock) {
+        var lastFailure: Throwable? = null
+        val linuxMjpegPreferences = if (currentDesktopOperatingSystem() == DesktopOperatingSystem.Linux) {
+            listOf(true, false)
+        } else {
+            listOf(false)
         }
-        delegate = nextDelegate
+        for (preferLinuxMjpeg in linuxMjpegPreferences) {
+            val nextDelegate = createFfmpegGrabber(cameraSettings, preferLinuxMjpeg)
+            try {
+                nextDelegate.start()
+                nextDelegate.requireRequestedResolution(cameraSettings)
+                delegate = nextDelegate
+                return@synchronized
+            } catch (cause: Throwable) {
+                runCatching { nextDelegate.release() }
+                lastFailure = cause
+            }
+        }
+        val cause = lastFailure
+        if (cause is FrameGrabber.Exception) throw cause
+        throw FrameGrabber.Exception("FFmpeg could not start the desktop camera.", cause)
     }
 
-    override fun stop() {
+    override fun stop() = synchronized(delegateLock) {
         delegate?.stop()
+        Unit
     }
 
-    override fun release() {
-        delegate?.release()
-        delegate = null
+    override fun release() = synchronized(delegateLock) {
+        try {
+            delegate?.release()
+        } finally {
+            delegate = null
+        }
+        Unit
     }
 
-    override fun trigger() {
+    override fun trigger() = synchronized(delegateLock) {
         delegate?.trigger() ?: throw FrameGrabber.Exception("Camera is not started.")
     }
 
-    override fun grab(): Frame =
-        delegate?.grab() ?: throw FrameGrabber.Exception("Camera is not started.")
-
-    private fun createGStreamerMediaFoundationDelegate(): FrameGrabber {
-        val grabber = GStreamerMediaFoundationFrameGrabber().configuredFor(cameraSettings)
-        return try {
-            grabber.start()
-            grabber
-        } catch (cause: Throwable) {
-            runCatching { grabber.release() }
-            throw cause
-        }
+    override fun grab(): Frame = synchronized(delegateLock) {
+        val frame = delegate?.grab() ?: throw FrameGrabber.Exception("Camera is not started.")
+        // CameraK converts the frame after grab() returns, while its shutdown
+        // releases the grabber without joining the capture coroutine. Return an
+        // owned copy so conversion can never read FFmpeg's released buffer.
+        frame.clone()
     }
 }
 
-private class GStreamerMediaFoundationFrameGrabber : FrameGrabber() {
-    private val converter = Java2DFrameConverter()
-    private var pipeline: Pipeline? = null
-    private var appSink: AppSink? = null
-
-    override fun start() {
-        GStreamerRuntime.ensureInitialized()
-        val requestedWidth = imageWidth.coerceAtLeast(MINIMUM_CAMERA_WIDTH)
-        val requestedHeight = imageHeight.coerceAtLeast(MINIMUM_CAMERA_HEIGHT)
-        val requestedFps = frameRate.toInt().coerceAtLeast(MINIMUM_CAMERA_FPS)
-        val nextPipeline = Gst.parseLaunch(
-            "mfvideosrc device-index=0 ! " +
-                "video/x-raw,width=$requestedWidth,height=$requestedHeight,framerate=$requestedFps/1 ! " +
-                "queue leaky=downstream max-size-buffers=1 ! " +
-                "videoconvert ! video/x-raw,format=BGRx ! " +
-                "appsink name=$APP_SINK_NAME sync=false max-buffers=1 drop=true",
-        ) as Pipeline
-        try {
-            val nextAppSink = nextPipeline.getElementByName(APP_SINK_NAME) as AppSink
-            pipeline = nextPipeline
-            appSink = nextAppSink
-            nextPipeline.play()
-        } catch (cause: Throwable) {
-            nextPipeline.setState(State.NULL)
-            throw cause
-        }
-    }
-
-    override fun stop() {
-        pipeline?.setState(State.NULL)
-        appSink = null
-        pipeline = null
-    }
-
-    override fun release() {
-        stop()
-    }
-
-    override fun trigger() = Unit
-
-    override fun grab(): Frame {
-        val sample = appSink?.pullSample() ?: throw Exception("No GStreamer camera sample is available.")
-        return try {
-            val buffer = sample.buffer ?: throw Exception("GStreamer camera sample does not contain a buffer.")
-            val caps = sample.caps ?: throw Exception("GStreamer camera sample does not contain caps.")
-            val structure = caps.getStructure(0)
-            val width = structure.getInteger("width")
-            val height = structure.getInteger("height")
-            val mappedBuffer = buffer.map(false)
-            try {
-                converter.convert(mappedBuffer.toBgrxImage(width, height))
-            } finally {
-                buffer.unmap()
-            }
-        } finally {
-            sample.dispose()
-        }
+private fun FFmpegFrameGrabber.requireRequestedResolution(cameraSettings: OpticalCameraSettings) {
+    val matchesRequestedResolution =
+        imageWidth == cameraSettings.targetWidth && imageHeight == cameraSettings.targetHeight
+    val matchesRotatedResolution =
+        imageWidth == cameraSettings.targetHeight && imageHeight == cameraSettings.targetWidth
+    if (!matchesRequestedResolution && !matchesRotatedResolution) {
+        throw FrameGrabber.Exception(
+            "Camera opened at " + imageWidth + "x" + imageHeight +
+                " instead of " + cameraSettings.targetWidth + "x" + cameraSettings.targetHeight + ".",
+        )
     }
 }
 
-private object GStreamerRuntime {
-    private var initialized = false
-
-    @Synchronized
-    fun ensureInitialized() {
-        if (initialized) return
-        Gst.init("EasyTransfer")
-        initialized = true
-    }
-}
-
-private fun ByteBuffer.toBgrxImage(width: Int, height: Int): BufferedImage {
-    val image = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
-    val pixels = (image.raster.dataBuffer as DataBufferInt).data
-    val source = duplicate()
-    val rowStride = (source.remaining() / height).coerceAtLeast(width * BYTES_PER_BGRX_PIXEL)
-    for (y in 0 until height) {
-        val rowOffset = y * rowStride
-        for (x in 0 until width) {
-            val pixelOffset = rowOffset + x * BYTES_PER_BGRX_PIXEL
-            val blue = source.get(pixelOffset).toInt() and 0xFF
-            val green = source.get(pixelOffset + 1).toInt() and 0xFF
-            val red = source.get(pixelOffset + 2).toInt() and 0xFF
-            pixels[y * width + x] = (red shl 16) or (green shl 8) or blue
-        }
-    }
-    return image
-}
-
-private const val APP_SINK_NAME = "easytransfer_camera_sink"
-private const val BYTES_PER_BGRX_PIXEL = 4
-private const val MINIMUM_CAMERA_WIDTH = 1
-private const val MINIMUM_CAMERA_HEIGHT = 1
-private const val MINIMUM_CAMERA_FPS = 1
+private const val DIRECT_SHOW_VIDEO_PREFIX = "video="
+private const val WINDOWS_REAL_TIME_BUFFER_SIZE = "256M"

@@ -1,5 +1,17 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
+val bytedecoArchitecture = when (System.getProperty("os.arch").lowercase()) {
+    "amd64", "x86_64" -> "x86_64"
+    "aarch64", "arm64" -> "arm64"
+    else -> error("Unsupported desktop architecture: " + System.getProperty("os.arch"))
+}
+val bytedecoPlatform = when {
+    System.getProperty("os.name").contains("Windows", ignoreCase = true) -> "windows-$bytedecoArchitecture"
+    System.getProperty("os.name").contains("Mac", ignoreCase = true) -> "macosx-$bytedecoArchitecture"
+    System.getProperty("os.name").contains("Linux", ignoreCase = true) -> "linux-$bytedecoArchitecture"
+    else -> error("Unsupported desktop operating system: " + System.getProperty("os.name"))
+}
+
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidMultiplatformLibrary)
@@ -62,7 +74,21 @@ kotlin {
             implementation(libs.zxing.core)
             implementation(libs.zxing.javase)
             implementation(libs.camera.core)
-            implementation(libs.gst1.java.core)
+            implementation("org.bytedeco:javacv:${libs.versions.javacv.get()}") {
+                isTransitive = false
+            }
+            implementation("org.bytedeco:javacpp:${libs.versions.javacv.get()}") {
+                isTransitive = false
+            }
+            implementation("org.bytedeco:javacpp:${libs.versions.javacv.get()}:$bytedecoPlatform") {
+                isTransitive = false
+            }
+            implementation("org.bytedeco:ffmpeg:${libs.versions.ffmpeg.get()}") {
+                isTransitive = false
+            }
+            implementation("org.bytedeco:ffmpeg:${libs.versions.ffmpeg.get()}:$bytedecoPlatform") {
+                isTransitive = false
+            }
             implementation(libs.sqldelight.sqlite.driver)
         }
         iosMain.dependencies {
@@ -77,8 +103,6 @@ kotlin {
             implementation(libs.compose.ui)
             implementation(libs.compose.components.resources)
             implementation(libs.compose.uiToolingPreview)
-            implementation(libs.androidx.lifecycle.viewmodelCompose)
-            implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(libs.fileKit.dialogsCompose)
             implementation(libs.sqldelight.runtime)
         }
@@ -94,6 +118,8 @@ dependencies {
 
 configurations.configureEach {
     exclude(group = "io.coil-kt.coil3")
+    exclude(group = "org.bytedeco", module = "javacv-platform")
+    exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-test")
 }
 
 sqldelight {

@@ -41,7 +41,6 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
@@ -186,10 +185,11 @@ private class JvmOpticalQrScannerPlugin(
                 if (now - lastDecodeStartedAt < frameIntervalNanos) return@collect
                 if (inFlightDecodes.get() >= decodeWorkerCount) return@collect
                 lastDecodeStartedAt = now
+                val decodeImage = image.copyForDecoding()
                 inFlightDecodes.incrementAndGet()
-                stateHolder.pluginScope.launch(Dispatchers.Default) {
+                launch(Dispatchers.Default) {
                     try {
-                        JvmByteQrDecoder().decode(image)?.let { code ->
+                        JvmByteQrDecoder().decode(decodeImage)?.let { code ->
                             stateHolder.pluginScope.launch { onCodeScanned(code) }
                         }
                     } finally {
@@ -206,6 +206,13 @@ private class JvmOpticalQrScannerPlugin(
         job.cancel()
     }
 }
+
+private fun BufferedImage.copyForDecoding(): BufferedImage = BufferedImage(
+    colorModel,
+    copyData(null),
+    colorModel.isAlphaPremultiplied,
+    null,
+)
 
 private class JvmByteQrDecoder {
     private val reader = MultiFormatReader().apply {

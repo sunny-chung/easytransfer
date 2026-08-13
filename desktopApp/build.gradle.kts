@@ -10,16 +10,20 @@ dependencies {
     implementation(project(":shared"))
 
     implementation(compose.desktop.currentOs)
-    implementation(libs.kotlinx.coroutinesSwing)
-
-    implementation(libs.compose.uiToolingPreview)
 }
 
 compose.desktop {
     application {
         mainClass = "com.sunnychung.application.easytransfer.MainKt"
 
+        buildTypes.release.proguard {
+            optimize.set(false)
+            obfuscate.set(false)
+            configurationFiles.from(project.file("rules.pro"))
+        }
+
         nativeDistributions {
+            modules("java.sql")
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "EasyTransfer"
             vendor = "Sunny Chung"
