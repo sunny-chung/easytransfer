@@ -20,6 +20,7 @@ permissions:
 env:
   ARTIFACT_NAME: EasyTransfer
   DISTRIBUTION_NAME: EasyTransfer
+  MODULE_BASE_PATH: desktopApp/
 jobs:
   build-linux:
     strategy:
@@ -38,8 +39,8 @@ jobs:
           distribution: ${{ matrix.java_dist }}
           java-version: '21'
       - run: ./gradlew clean createReleaseDistributable
-      - run: pushd ./build/compose/binaries && ls -al && cd main-release && ls -al && popd
-      - run: pushd ./build/compose/binaries/main-release/app && ls -al && tar -cvzf "app.tar.gz" "${{ env.ARTIFACT_NAME }}" && mv "app.tar.gz" "../../../../../GiantLogViewer-${GITHUB_REF_NAME/desktop\//}-linux-${{ runner.arch }}.tar.gz" && popd
+      - run: pushd ./${{ MODULE_BASE_PATH }}build/compose/binaries && ls -al && cd main-release && ls -al && popd
+      - run: pushd ./${{ MODULE_BASE_PATH }}build/compose/binaries/main-release/app && ls -al && tar -cvzf "app.tar.gz" "${{ env.ARTIFACT_NAME }}" && mv "app.tar.gz" "../../../../../GiantLogViewer-${GITHUB_REF_NAME/desktop\//}-linux-${{ runner.arch }}.tar.gz" && popd
       - uses: softprops/action-gh-release@v1
         with:
           files: "${{ env.DISTRIBUTION_NAME }}-*-linux-${{ runner.arch }}.tar.gz"
@@ -47,7 +48,8 @@ jobs:
   build-windows:
     strategy:
       matrix:
-        os: [windows-2022, windows-11-arm]
+#        os: [windows-2022, windows-11-arm]  # arm is not supported by bytedeco ffmpeg
+        os: [windows-2022]
         include:
           - os: windows-2022
             java_dist: 'corretto'
@@ -61,8 +63,8 @@ jobs:
           distribution: ${{ matrix.java_dist }}
           java-version: '21'
       - run: ./gradlew clean createReleaseDistributable
-      - run: pushd ./build/compose/binaries && dir && cd main-release && dir && popd
-      - run: pushd ./build/compose/binaries/main-release/app && dir && tar -acf "app.zip" "${{ env.ARTIFACT_NAME }}" && move "app.zip" "../../../../../${{ env.DISTRIBUTION_NAME }}-${GITHUB_REF_NAME/desktop\//}-windows-${{ runner.arch }}.zip" && popd
+      - run: pushd ./${{ MODULE_BASE_PATH }}build/compose/binaries && dir && cd main-release && dir && popd
+      - run: pushd ./${{ MODULE_BASE_PATH }}build/compose/binaries/main-release/app && dir && tar -acf "app.zip" "${{ env.ARTIFACT_NAME }}" && move "app.zip" "../../../../../${{ env.DISTRIBUTION_NAME }}-${GITHUB_REF_NAME/desktop\//}-windows-${{ runner.arch }}.zip" && popd
       - uses: softprops/action-gh-release@v1
         with:
           files: "${{ env.DISTRIBUTION_NAME }}-*-windows-${{ runner.arch }}.zip"
@@ -79,7 +81,7 @@ jobs:
           distribution: 'corretto'
           java-version: '21'
       - run: ./gradlew clean packageReleaseDistributionForCurrentOS
-      - run: mv ./build/compose/binaries/main-release/dmg/*.dmg "./${{ env.DISTRIBUTION_NAME }}-${GITHUB_REF_NAME/desktop\//}-macos-${{ runner.arch }}.dmg"
+      - run: mv ./${{ MODULE_BASE_PATH }}build/compose/binaries/main-release/dmg/*.dmg "./${{ env.DISTRIBUTION_NAME }}-${GITHUB_REF_NAME/desktop\//}-macos-${{ runner.arch }}.dmg"
       - uses: softprops/action-gh-release@v1
         with:
           files: "./${{ env.DISTRIBUTION_NAME }}-*-macos-${{ runner.arch }}.dmg"
