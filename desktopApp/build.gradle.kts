@@ -21,7 +21,9 @@ compose.desktop {
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "com.sunnychung.application.easytransfer"
+            packageName = "EasyTransfer"
+            vendor = "Sunny Chung"
+            copyright = "© 2026 Sunny Chung"
             packageVersion = "1.0.0"
 
             macOS {
