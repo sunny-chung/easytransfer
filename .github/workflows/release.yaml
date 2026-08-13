@@ -22,7 +22,10 @@ env:
   DISTRIBUTION_NAME: EasyTransfer
 jobs:
   build-linux:
-    runs-on: [ubuntu-22.04, ubuntu-22.04-arm]
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-22.04-arm]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -37,7 +40,10 @@ jobs:
           files: "${{ env.DISTRIBUTION_NAME }}-${{ github.ref_name }}-linux-${{ runner.arch }}.tar.gz"
           draft: true
   build-windows:
-    runs-on: [windows-2022, windows-11-arm]
+    strategy:
+      matrix:
+        os: [windows-2022, windows-11-arm]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
