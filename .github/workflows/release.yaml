@@ -39,8 +39,8 @@ jobs:
           distribution: ${{ matrix.java_dist }}
           java-version: '21'
       - run: ./gradlew clean createReleaseDistributable
-      - run: pushd ./${{ MODULE_BASE_PATH }}build/compose/binaries && ls -al && cd main-release && ls -al && popd
-      - run: pushd ./${{ MODULE_BASE_PATH }}build/compose/binaries/main-release/app && ls -al && tar -cvzf "app.tar.gz" "${{ env.ARTIFACT_NAME }}" && mv "app.tar.gz" "../../../../../GiantLogViewer-${GITHUB_REF_NAME/desktop\//}-linux-${{ runner.arch }}.tar.gz" && popd
+      - run: pushd ./${{ env.MODULE_BASE_PATH }}build/compose/binaries && ls -al && cd main-release && ls -al && popd
+      - run: pushd ./${{ env.MODULE_BASE_PATH }}build/compose/binaries/main-release/app && ls -al && tar -cvzf "app.tar.gz" "${{ env.ARTIFACT_NAME }}" && mv "app.tar.gz" "../../../../../GiantLogViewer-${GITHUB_REF_NAME/desktop\//}-linux-${{ runner.arch }}.tar.gz" && popd
       - uses: softprops/action-gh-release@v1
         with:
           files: "${{ env.DISTRIBUTION_NAME }}-*-linux-${{ runner.arch }}.tar.gz"
@@ -63,8 +63,8 @@ jobs:
           distribution: ${{ matrix.java_dist }}
           java-version: '21'
       - run: ./gradlew clean createReleaseDistributable
-      - run: pushd ./${{ MODULE_BASE_PATH }}build/compose/binaries && dir && cd main-release && dir && popd
-      - run: pushd ./${{ MODULE_BASE_PATH }}build/compose/binaries/main-release/app && dir && tar -acf "app.zip" "${{ env.ARTIFACT_NAME }}" && move "app.zip" "../../../../../${{ env.DISTRIBUTION_NAME }}-${GITHUB_REF_NAME/desktop\//}-windows-${{ runner.arch }}.zip" && popd
+      - run: pushd ./${{ env.MODULE_BASE_PATH }}build/compose/binaries && dir && cd main-release && dir && popd
+      - run: pushd ./${{ env.MODULE_BASE_PATH }}build/compose/binaries/main-release/app && dir && tar -acf "app.zip" "${{ env.ARTIFACT_NAME }}" && move "app.zip" "../../../../../${{ env.DISTRIBUTION_NAME }}-${GITHUB_REF_NAME/desktop\//}-windows-${{ runner.arch }}.zip" && popd
       - uses: softprops/action-gh-release@v1
         with:
           files: "${{ env.DISTRIBUTION_NAME }}-*-windows-${{ runner.arch }}.zip"
@@ -81,7 +81,7 @@ jobs:
           distribution: 'corretto'
           java-version: '21'
       - run: ./gradlew clean packageReleaseDistributionForCurrentOS
-      - run: mv ./${{ MODULE_BASE_PATH }}build/compose/binaries/main-release/dmg/*.dmg "./${{ env.DISTRIBUTION_NAME }}-${GITHUB_REF_NAME/desktop\//}-macos-${{ runner.arch }}.dmg"
+      - run: mv ./${{ env.MODULE_BASE_PATH }}build/compose/binaries/main-release/dmg/*.dmg "./${{ env.DISTRIBUTION_NAME }}-${GITHUB_REF_NAME/desktop\//}-macos-${{ runner.arch }}.dmg"
       - uses: softprops/action-gh-release@v1
         with:
           files: "./${{ env.DISTRIBUTION_NAME }}-*-macos-${{ runner.arch }}.dmg"
