@@ -9,6 +9,9 @@
 -keep interface com.sun.jna.** { *; }
 -dontwarn com.sun.jna.**
 
+# JNA discovers callback entry points through reflection
+-keep class * implements com.sun.jna.Callback { *; }
+
 # SQLite registers its JDBC entry point by class name and JNI references helper
 # types such as Function that are otherwise invisible to static reachability.
 -keep class org.sqlite.** { *; }
