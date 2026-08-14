@@ -53,8 +53,8 @@ jobs:
         include:
           - os: windows-2022
             java_dist: 'corretto'
-          - os: windows-11-arm
-            java_dist: 'temurin'
+#          - os: windows-11-arm
+#            java_dist: 'temurin'
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
