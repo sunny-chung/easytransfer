@@ -159,9 +159,13 @@ private class VerifiedFfmpegCameraGrabber(
     private val cameraSettings: OpticalCameraSettings,
 ) : FrameGrabber() {
     private val delegateLock = Any()
+    @Volatile private var isClosed = false
+    @Volatile private var isReleased = false
     private var delegate: FFmpegFrameGrabber? = null
 
     override fun start() = synchronized(delegateLock) {
+        if (isReleased) throw FrameGrabber.Exception("Camera has been released.")
+        isClosed = false
         var lastFailure: Throwable? = null
         val linuxMjpegPreferences = if (currentDesktopOperatingSystem() == DesktopOperatingSystem.Linux) {
             listOf(true, false)
@@ -185,30 +189,44 @@ private class VerifiedFfmpegCameraGrabber(
         throw FrameGrabber.Exception("FFmpeg could not start the desktop camera.", cause)
     }
 
-    override fun stop() = synchronized(delegateLock) {
-        delegate?.stop()
-        Unit
+    override fun stop() {
+        val currentDelegate = synchronized(delegateLock) {
+            isClosed = true
+            delegate
+        }
+        currentDelegate?.stop()
     }
 
-    override fun release() = synchronized(delegateLock) {
-        try {
-            delegate?.release()
-        } finally {
-            delegate = null
+    override fun release() {
+        val currentDelegate = synchronized(delegateLock) {
+            isReleased = true
+            isClosed = true
+            delegate.also { delegate = null }
         }
-        Unit
+        try {
+            currentDelegate?.stop()
+        } catch (_: Throwable) {
+            // Continue to release native resources even if the device was already stopped.
+        }
+        currentDelegate?.release()
     }
 
     override fun trigger() = synchronized(delegateLock) {
+        if (isClosed) throw FrameGrabber.Exception("Camera is not started.")
         delegate?.trigger() ?: throw FrameGrabber.Exception("Camera is not started.")
     }
 
-    override fun grab(): Frame = synchronized(delegateLock) {
-        val frame = delegate?.grab() ?: throw FrameGrabber.Exception("Camera is not started.")
-        // CameraK converts the frame after grab() returns, while its shutdown
-        // releases the grabber without joining the capture coroutine. Return an
-        // owned copy so conversion can never read FFmpeg's released buffer.
-        frame.clone()
+    override fun grab(): Frame {
+        if (isClosed) throw FrameGrabber.Exception("Camera is not started.")
+        val currentDelegate = synchronized(delegateLock) {
+            if (isClosed) throw FrameGrabber.Exception("Camera is not started.")
+            delegate
+        } ?: throw FrameGrabber.Exception("Camera is not started.")
+        val frame = currentDelegate.grab()
+        if (isClosed) throw FrameGrabber.Exception("Camera is not started.")
+        // The caller converts the frame after grab() returns. Return an owned
+        // copy so conversion can never read FFmpeg's released buffer.
+        return frame.clone()
     }
 }
 

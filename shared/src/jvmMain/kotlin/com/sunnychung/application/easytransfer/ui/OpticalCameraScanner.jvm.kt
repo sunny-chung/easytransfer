@@ -1,9 +1,10 @@
 package com.sunnychung.application.easytransfer.ui
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -12,6 +13,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType
@@ -22,27 +26,31 @@ import com.google.zxing.ResultMetadataType
 import com.google.zxing.client.j2se.BufferedImageLuminanceSource
 import com.google.zxing.common.GlobalHistogramBinarizer
 import com.google.zxing.common.HybridBinarizer
-import com.kashif.cameraK.compose.CameraKScreen
-import com.kashif.cameraK.controller.DesktopCameraControllerBuilder
-import com.kashif.cameraK.enums.AspectRatio
-import com.kashif.cameraK.enums.CameraLens
 import com.kashif.cameraK.permissions.providePermissions
-import com.kashif.cameraK.state.CameraConfiguration
-import com.kashif.cameraK.state.CameraKPlugin
-import com.kashif.cameraK.state.CameraKState
-import com.kashif.cameraK.state.CameraKStateHolder
 import com.sunnychung.application.easytransfer.camera.OpticalCameraSettings
 import com.sunnychung.application.easytransfer.camera.desktopCameraGrabber
 import java.awt.image.BufferedImage
 import java.nio.charset.StandardCharsets
 import java.util.EnumMap
 import java.util.Locale
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.min
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.bytedeco.javacv.FrameGrabber
+import org.bytedeco.javacv.Java2DFrameConverter
 
 @Composable
 internal actual fun OpticalCameraScanner(
@@ -75,73 +83,160 @@ internal actual fun OpticalCameraScanner(
         return
     }
 
+    val callbackScope = rememberCoroutineScope()
     val currentOnCodeScanned = rememberUpdatedState(onCodeScanned)
-    val opticalQrPlugin = remember(cameraSettings) {
-        JvmOpticalQrScannerPlugin(
+    val cameraSession = remember(cameraSettings) {
+        DesktopOpticalCameraSession(
             cameraSettings = cameraSettings,
+            callbackScope = callbackScope,
             onCodeScanned = { code -> currentOnCodeScanned.value(code) },
         )
     }
-    val cameraConfiguration = remember(cameraSettings) {
-        CameraConfiguration(
-            cameraLens = CameraLens.BACK,
-            aspectRatio = AspectRatio.RATIO_4_3,
-            targetResolution = cameraSettings.targetWidth to cameraSettings.targetHeight,
-        )
+    DisposableEffect(cameraSession) {
+        cameraSession.start()
+        onDispose { cameraSession.close() }
     }
-    val cameraState by rememberDesktopCameraState(
-        config = cameraConfiguration,
-        cameraSettings = cameraSettings,
-        setupPlugins = { stateHolder -> stateHolder.attachPlugin(opticalQrPlugin) },
+    val cameraState by cameraSession.state.collectAsState()
+
+    Box(modifier = modifier) {
+        when (val state = cameraState) {
+            DesktopCameraState.Initializing -> CameraMessage("Starting camera")
+            is DesktopCameraState.Error -> CameraMessage(state.message)
+            is DesktopCameraState.Ready -> {
+                state.previewFrame?.let { frame ->
+                    Image(
+                        bitmap = frame,
+                        contentDescription = "Camera Preview",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                }
+                CameraTargetOverlay()
+            }
+        }
+    }
+}
+
+private sealed interface DesktopCameraState {
+    data object Initializing : DesktopCameraState
+    data class Ready(val previewFrame: ImageBitmap?) : DesktopCameraState
+    data class Error(val message: String) : DesktopCameraState
+}
+
+private class DesktopOpticalCameraSession(
+    private val cameraSettings: OpticalCameraSettings,
+    private val callbackScope: CoroutineScope,
+    private val onCodeScanned: (ByteArray) -> Unit,
+) {
+    private val closed = AtomicBoolean(false)
+    private val started = AtomicBoolean(false)
+    private val cameraDispatcher = singleThreadDispatcher("EasyTransfer optical camera")
+    private val decodeDispatcher = fixedThreadDispatcher(
+        name = "EasyTransfer optical decoder",
+        threadCount = cameraSettings.decodeWorkers.workerCount,
     )
-    CameraKScreen(
-        cameraState = cameraState,
-        modifier = modifier,
-        loadingContent = { CameraMessage("Starting camera") },
-        errorContent = { CameraMessage(it.message ?: "Camera could not start") },
-        overlay = { CameraTargetOverlay() },
-    ) {}
-}
+    private val sessionJob = SupervisorJob()
+    private val sessionScope = CoroutineScope(sessionJob + cameraDispatcher)
+    private val activeGrabber = AtomicReference<FrameGrabber?>(null)
+    private val inFlightDecodes = AtomicInteger(0)
+    private var cameraJob: Job? = null
 
-@Composable
-private fun rememberDesktopCameraState(
-    config: CameraConfiguration,
-    cameraSettings: OpticalCameraSettings,
-    setupPlugins: suspend (CameraKStateHolder) -> Unit,
-): State<CameraKState> {
-    val coroutineScope = rememberCoroutineScope()
-    val stateHolder = remember(config, cameraSettings) {
-        CameraKStateHolder(
-            cameraConfiguration = config,
-            controllerFactory = {
-                DesktopCameraControllerBuilder()
-                    .apply {
-                        setImageFormat(config.imageFormat)
-                        setDirectory(config.directory)
-                        setAspectRatio(config.aspectRatio)
-                        setCameraLens(config.cameraLens)
-                        setGrabber(desktopCameraGrabber(cameraSettings))
-                        config.targetResolution?.let { (width, height) ->
-                            setResolution(width, height)
-                        }
+    private val frameIntervalNanos = 1_000_000_000L / cameraSettings.captureFps.framesPerSecond
+    private val decodeWorkerCount = cameraSettings.decodeWorkers.workerCount
+
+    private val mutableState = MutableStateFlow<DesktopCameraState>(DesktopCameraState.Initializing)
+    val state: StateFlow<DesktopCameraState> = mutableState
+
+    fun start() {
+        if (!started.compareAndSet(false, true)) return
+        cameraJob = sessionScope.launch {
+            val converter = Java2DFrameConverter()
+            val grabber = desktopCameraGrabber(cameraSettings)
+            activeGrabber.set(grabber)
+            try {
+                grabber.start()
+                mutableState.value = DesktopCameraState.Ready(previewFrame = null)
+
+                var lastPreviewFrameAt = 0L
+                var lastDecodeStartedAt = 0L
+                while (!closed.get() && isActive) {
+                    val frame = try {
+                        grabber.grab()
+                    } catch (cause: Throwable) {
+                        if (closed.get() || !isActive) break
+                        throw cause
                     }
-                    .build()
-            },
-            coroutineScope = coroutineScope,
-        )
+                    if (frame?.image == null) continue
+                    val image = converter.convert(frame) ?: continue
+                    val now = System.nanoTime()
+
+                    if (now - lastPreviewFrameAt >= DESKTOP_PREVIEW_FRAME_INTERVAL_NANOS) {
+                        lastPreviewFrameAt = now
+                        mutableState.value = DesktopCameraState.Ready(
+                            previewFrame = image
+                                .previewCopy(DESKTOP_PREVIEW_MAX_DIMENSION)
+                                .toComposeImageBitmap(),
+                        )
+                    }
+
+                    if (now - lastDecodeStartedAt >= frameIntervalNanos &&
+                        inFlightDecodes.get() < decodeWorkerCount
+                    ) {
+                        lastDecodeStartedAt = now
+                        decode(image.copyForDecoding())
+                    }
+                }
+            } catch (cause: CancellationException) {
+                throw cause
+            } catch (cause: Throwable) {
+                if (!closed.get()) {
+                    mutableState.value = DesktopCameraState.Error(
+                        message = cause.message ?: "Camera could not start",
+                    )
+                }
+            } finally {
+                runCatching { grabber.release() }
+                activeGrabber.compareAndSet(grabber, null)
+                converter.close()
+            }
+        }
     }
 
-    LaunchedEffect(stateHolder) {
-        setupPlugins(stateHolder)
-        stateHolder.initialize()
+    fun close() {
+        if (!closed.compareAndSet(false, true)) return
+        cameraJob?.cancel()
+        runCatching { activeGrabber.getAndSet(null)?.release() }
+        sessionScope.cancel()
+        decodeDispatcher.close()
+        cameraDispatcher.close()
     }
 
-    DisposableEffect(stateHolder) {
-        onDispose { stateHolder.shutdown() }
+    private fun decode(image: BufferedImage) {
+        inFlightDecodes.incrementAndGet()
+        sessionScope.launch(decodeDispatcher) {
+            try {
+                JvmByteQrDecoder().decode(image)?.let { code ->
+                    callbackScope.launch { onCodeScanned(code) }
+                }
+            } finally {
+                inFlightDecodes.decrementAndGet()
+            }
+        }
     }
-
-    return stateHolder.cameraState.collectAsState()
 }
+
+private fun singleThreadDispatcher(name: String): ExecutorCoroutineDispatcher =
+    Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, name).apply { isDaemon = true }
+    }.asCoroutineDispatcher()
+
+private fun fixedThreadDispatcher(
+    name: String,
+    threadCount: Int,
+): ExecutorCoroutineDispatcher =
+    Executors.newFixedThreadPool(threadCount) { runnable ->
+        Thread(runnable, name).apply { isDaemon = true }
+    }.asCoroutineDispatcher()
 
 private fun openCameraPermissionSettings() {
     val osName = System.getProperty("os.name").lowercase(Locale.US)
@@ -167,52 +262,37 @@ private fun startProcess(vararg command: String): Boolean =
         true
     }.getOrDefault(false)
 
-private class JvmOpticalQrScannerPlugin(
-    cameraSettings: OpticalCameraSettings,
-    private val onCodeScanned: (ByteArray) -> Unit,
-) : CameraKPlugin {
-    private val frameIntervalNanos = 1_000_000_000L / cameraSettings.captureFps.framesPerSecond
-    private val decodeWorkerCount = cameraSettings.decodeWorkers.workerCount
-    private val inFlightDecodes = AtomicInteger(0)
-    private var scannerJob: Job? = null
-    private var lastDecodeStartedAt = 0L
-
-    override fun onAttach(stateHolder: CameraKStateHolder) {
-        scannerJob = stateHolder.pluginScope.launch(Dispatchers.Default) {
-            val controller = stateHolder.getReadyCameraController()
-            controller?.frameFlow?.collect { image ->
-                val now = System.nanoTime()
-                if (now - lastDecodeStartedAt < frameIntervalNanos) return@collect
-                if (inFlightDecodes.get() >= decodeWorkerCount) return@collect
-                lastDecodeStartedAt = now
-                val decodeImage = image.copyForDecoding()
-                inFlightDecodes.incrementAndGet()
-                launch(Dispatchers.Default) {
-                    try {
-                        JvmByteQrDecoder().decode(decodeImage)?.let { code ->
-                            stateHolder.pluginScope.launch { onCodeScanned(code) }
-                        }
-                    } finally {
-                        inFlightDecodes.decrementAndGet()
-                    }
-                }
-            }
-        }
-    }
-
-    override fun onDetach() {
-        val job = scannerJob ?: return
-        scannerJob = null
-        job.cancel()
-    }
-}
-
 private fun BufferedImage.copyForDecoding(): BufferedImage = BufferedImage(
     colorModel,
     copyData(null),
     colorModel.isAlphaPremultiplied,
     null,
 )
+
+private fun BufferedImage.previewCopy(maxDimension: Int): BufferedImage {
+    val longestSide = maxOf(width, height)
+    if (longestSide <= maxDimension) {
+        return BufferedImage(
+            colorModel,
+            copyData(null),
+            colorModel.isAlphaPremultiplied,
+            null,
+        )
+    }
+
+    val scale = maxDimension.toDouble() / longestSide.toDouble()
+    val targetWidth = (width * scale).toInt().coerceAtLeast(1)
+    val targetHeight = (height * scale).toInt().coerceAtLeast(1)
+    val targetType = if (type == BufferedImage.TYPE_CUSTOM) BufferedImage.TYPE_INT_RGB else type
+    val preview = BufferedImage(targetWidth, targetHeight, targetType)
+    val graphics = preview.createGraphics()
+    try {
+        graphics.drawImage(this, 0, 0, targetWidth, targetHeight, null)
+    } finally {
+        graphics.dispose()
+    }
+    return preview
+}
 
 private class JvmByteQrDecoder {
     private val reader = MultiFormatReader().apply {
@@ -295,3 +375,5 @@ private fun Result.byteModePayload(): ByteArray? {
 
 private const val CENTER_CROP_RATIO = 0.82
 private const val MINIMUM_CROP_SIZE = 360
+private const val DESKTOP_PREVIEW_FRAME_INTERVAL_NANOS = 1_000_000_000L / 12L
+private const val DESKTOP_PREVIEW_MAX_DIMENSION = 960

@@ -972,6 +972,5 @@ internal fun TransferPayload.canPreviewVideo(): Boolean =
     false // actionMediaType().startsWith("video/")
 
 private fun List<OpticalCaptureFps>.preferredCaptureFps(): OpticalCaptureFps =
-    firstOrNull { fps -> fps == OpticalCaptureFps.Fps30 }
-        ?: firstOrNull()
+    maxByOrNull { fps -> fps.framesPerSecond }
         ?: OpticalCaptureFps.Fps30
