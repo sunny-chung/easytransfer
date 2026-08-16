@@ -67,6 +67,8 @@ jobs:
       - run: pushd ./${{ env.MODULE_BASE_PATH }}build/compose/binaries && dir && cd main-release && dir && popd
       - run: pushd ./${{ env.MODULE_BASE_PATH }}build/compose/binaries/main-release/app && dir && tar -acf "app.zip" "${{ env.ARTIFACT_NAME }}" && move "app.zip" "../../../../../${{ env.MODULE_PARENT_NAVIGATION }}${{ env.DISTRIBUTION_NAME }}-${GITHUB_REF_NAME/desktop\//}-windows-${{ runner.arch }}.zip" && popd && dir
         shell: bash
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
       - uses: softprops/action-gh-release@v1
         with:
           files: "${{ env.DISTRIBUTION_NAME }}-*-windows-${{ runner.arch }}.zip"
